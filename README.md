@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VegPro Smart Farm Operations MVP
 
-## Getting Started
+Production-ready MVP for realtime farm infestation monitoring, GPS hotspots, and spray tracking.
 
-First, run the development server:
+## Tech Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui
+- Supabase (Auth, Postgres, Realtime, Storage, RLS)
+- Zustand, React Hook Form, Zod, Recharts, Framer Motion
+- PWA via `next-pwa`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Local Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Install dependencies: `npm install`
+2. Create `.env.local` from `.env.example`
+3. Run app: `npm run dev`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Supabase Setup
 
-## Learn More
+1. Create a Supabase project at [supabase.com](https://supabase.com).
+2. In **SQL Editor**, run migrations in order: `001` → `002` → `003` → `004` → `005` → `006_scouting_bemack` → `007_seed_bemack` → `008_scouting_realtime` → `009_scouting_phase2` → `010_scouting_rounds_realtime` → `011_remove_legacy_seed` → `014_demo_manager_account` → optional `012_sample_bemack_demo` (demo seed data).
+3. See **[docs/DEMO-DAY.md](docs/DEMO-DAY.md)** for the live VegPro demo script (scout entry, GPS, manager views).
+4. **Authentication → Users**: demo accounts (or run migration `014_demo_manager_account.sql`):
+   - `admin@vegpro.com` — Admin
+   - `manager@vegpro.com` — Farm manager (`supervisor` role) — password `VegPro2026!`
+   - `worker@vegpro.com` — Field worker
+5. Copy each user’s UUID, paste into `supabase/link-auth-users.sql`, and run it.
+6. (Optional) Run `supabase/seed.sql` — notes only; Bemack data lives in `007_seed_bemack.sql`.
+7. Copy `.env.example` to `.env.local` with your project URL and anon key; restart `npm run dev`.
+8. Storage bucket `activity-evidence` is created by `001_init.sql`.
 
-To learn more about Next.js, take a look at the following resources:
+## Deployment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Vercel Frontend
+- Import repository and add environment variables.
+- Deploy from main branch.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Supabase Backend
+- Apply migration and seed scripts.
+- Validate RLS and storage access.
 
-## Deploy on Vercel
+## Phase 2 (Future Scope)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- AI assistant insights and predictive analytics
+- IoT data ingestion
+- Facial recognition
+- Advanced map visualizations

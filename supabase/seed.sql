@@ -1,0 +1,8 @@
+-- Prerequisite: run supabase/link-auth-users.sql after creating Auth users in the dashboard.
+--
+-- Master data (Star farm, VegPro greenhouse map, pest/disease list):
+--   supabase/migrations/007_seed_bemack.sql (legacy)
+--   supabase/migrations/016_seed_star_farm.sql (Star houses + Cut Rose varieties)
+--
+-- Legacy North Farm / East Farm rows were removed in 011_remove_legacy_seed.sql.
+-- No additional rows are inserted here.

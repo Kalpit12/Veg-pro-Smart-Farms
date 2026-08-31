@@ -1,26 +1,478 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-heading);
+  --font-chart-label: var(--font-chart-label);
+  --font-chart-display: var(--font-chart-display);
+  --font-chart-data: var(--font-chart-data);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --font-chart-label: var(--font-sans);
+  --font-chart-display: var(--font-heading);
+  --font-chart-data: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --background: oklch(0.985 0.012 145);
+  --foreground: oklch(0.22 0.03 150);
+  --card: oklch(0.995 0.008 145);
+  --card-foreground: oklch(0.22 0.03 150);
+  --popover: oklch(0.995 0.008 145);
+  --popover-foreground: oklch(0.22 0.03 150);
+  --primary: oklch(0.42 0.12 150);
+  --primary-foreground: oklch(0.985 0.01 145);
+  --secondary: oklch(0.95 0.03 85);
+  --secondary-foreground: oklch(0.32 0.05 85);
+  --muted: oklch(0.95 0.015 145);
+  --muted-foreground: oklch(0.5 0.03 150);
+  --accent: oklch(0.93 0.04 85);
+  --accent-foreground: oklch(0.3 0.06 85);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.9 0.02 145);
+  --input: oklch(0.9 0.02 145);
+  --ring: oklch(0.55 0.1 150);
+  --chart-1: oklch(0.55 0.14 150);
+  --chart-2: oklch(0.72 0.14 85);
+  --chart-3: oklch(0.62 0.16 25);
+  --chart-4: oklch(0.68 0.12 200);
+  --chart-5: oklch(0.58 0.1 300);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.97 0.02 145);
+  --sidebar-foreground: oklch(0.22 0.03 150);
+  --sidebar-primary: oklch(0.42 0.12 150);
+  --sidebar-primary-foreground: oklch(0.985 0.01 145);
+  --sidebar-accent: oklch(0.93 0.03 145);
+  --sidebar-accent-foreground: oklch(0.28 0.04 150);
+  --sidebar-border: oklch(0.9 0.02 145);
+  --sidebar-ring: oklch(0.55 0.1 150);
+}
+
+.dark {
+  --background: oklch(0.17 0.02 150);
+  --foreground: oklch(0.96 0.01 145);
+  --card: oklch(0.22 0.025 150);
+  --card-foreground: oklch(0.96 0.01 145);
+  --popover: oklch(0.22 0.025 150);
+  --popover-foreground: oklch(0.96 0.01 145);
+  --primary: oklch(0.72 0.12 150);
+  --primary-foreground: oklch(0.18 0.03 150);
+  --secondary: oklch(0.28 0.03 85);
+  --secondary-foreground: oklch(0.96 0.02 85);
+  --muted: oklch(0.28 0.02 150);
+  --muted-foreground: oklch(0.72 0.03 145);
+  --accent: oklch(0.3 0.04 85);
+  --accent-foreground: oklch(0.96 0.02 85);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.1 150);
+  --chart-1: oklch(0.72 0.12 150);
+  --chart-2: oklch(0.78 0.12 85);
+  --chart-3: oklch(0.7 0.14 25);
+  --chart-4: oklch(0.74 0.1 200);
+  --chart-5: oklch(0.68 0.1 300);
+  --sidebar: oklch(0.2 0.025 150);
+  --sidebar-foreground: oklch(0.96 0.01 145);
+  --sidebar-primary: oklch(0.72 0.12 150);
+  --sidebar-primary-foreground: oklch(0.18 0.03 150);
+  --sidebar-accent: oklch(0.28 0.03 150);
+  --sidebar-accent-foreground: oklch(0.96 0.01 145);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.62 0.1 150);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    overflow-x: clip;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: clip;
+    background-image:
+      radial-gradient(circle at top right, oklch(0.78 0.1 150 / 22%), transparent 40%),
+      radial-gradient(circle at bottom left, oklch(0.82 0.08 85 / 16%), transparent 36%);
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading), var(--font-sans), sans-serif;
+    letter-spacing: -0.02em;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .glass-card {
+    background: color-mix(in oklab, var(--color-card) 78%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+    backdrop-filter: blur(16px);
+    box-shadow:
+      0 1px 0 color-mix(in oklab, white 50%, transparent) inset,
+      0 18px 42px oklch(0.2 0.04 150 / 8%);
+  }
+
+  .dashboard-hero {
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--color-primary) 14%, transparent),
+        color-mix(in oklab, var(--color-accent) 18%, transparent)
+      ),
+      color-mix(in oklab, var(--color-card) 88%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-primary) 18%, var(--color-border));
+  }
+
+  .stat-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: var(--stat-accent, var(--color-primary));
+    border-radius: 999px;
+  }
+
+  .live-pulse {
+    animation: live-pulse 1.8s ease-in-out infinite;
+  }
+
+  .veg-select {
+    @apply w-full rounded-xl border border-border bg-background/90 px-3 py-2.5 text-sm shadow-sm transition outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30;
+  }
+
+  .mobile-scroll {
+    @apply overflow-x-auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .font-chart-label {
+    font-family: var(--font-chart-label), var(--font-sans), sans-serif;
+  }
+
+  .font-chart-display {
+    font-family: var(--font-chart-display), var(--font-heading), serif;
+  }
+
+  .font-chart-data {
+    font-family: var(--font-chart-data), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chart-surface {
+    width: 100%;
+    min-width: 0;
+    color: var(--color-muted-foreground);
+    font-family: var(--font-chart-label), var(--font-sans), sans-serif;
+  }
+
+  .chart-surface .recharts-cartesian-axis-tick-value,
+  .chart-surface .recharts-legend-item-text,
+  .chart-surface .recharts-text {
+    font-family: var(--font-chart-label), var(--font-sans), sans-serif;
+  }
+
+  .farm-map-shell {
+    background: #fff;
+  }
+
+  .farm-map-view {
+    height: 100%;
+    width: 100%;
+    z-index: 0;
+    background: #e8eaed;
+  }
+
+  .farm-map-view .leaflet-container {
+    height: 100%;
+    width: 100%;
+    background: #e8eaed;
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+
+  .farm-map-marker {
+    background: transparent;
+    border: none;
+    pointer-events: auto;
+  }
+
+  .farm-map-worker-dot {
+    position: relative;
+    display: block;
+    width: 28px;
+    height: 28px;
+  }
+
+  .farm-map-worker-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 2;
+    display: block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #fff;
+    border-radius: 9999px;
+    background: #4285f4;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 28%);
+    transform: translate(-50%, -50%);
+  }
+
+  .farm-map-worker-pulse {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 1;
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    background: rgb(66 133 244 / 28%);
+    transform: translate(-50%, -50%);
+    animation: farm-map-worker-pulse 2s ease-out infinite;
+  }
+
+  .farm-map-control-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 9999px;
+    background: #fff;
+    color: #3c4043;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 18%);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .farm-map-control-btn:hover {
+    background: #f8f9fa;
+  }
+
+  .farm-map-control-btn--ghost {
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 92%);
+  }
+
+  .farm-map-control-btn--locate {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+  }
+
+  .farm-map-zoom-stack {
+    position: absolute;
+    right: 12px;
+    bottom: 24px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 9999px;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 18%);
+  }
+
+  .farm-map-zoom-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .farm-map-zoom-btn + .farm-map-zoom-btn {
+    border-top: 1px solid #e8eaed;
+  }
+
+  .farm-map-overlay {
+    position: absolute;
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  .farm-map-overlay--legend {
+    top: 12px;
+    left: 12px;
+    display: flex;
+    max-width: calc(100% - 72px);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .farm-map-chip {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 96%);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #3c4043;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 14%);
+    backdrop-filter: blur(8px);
+  }
+
+  .farm-map-chip-select {
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    color: inherit;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .farm-map-chip-link {
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .farm-map-chip-toggle {
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+
+  .farm-map-chip-toggle:not(.farm-map-chip--active) {
+    opacity: 0.55;
+  }
+
+  .farm-map-chip--active {
+    box-shadow: 0 2px 8px rgb(0 0 0 / 16%);
+  }
+
+  .farm-map-chip-link:hover {
+    background: #fff;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+  }
+
+  .farm-map-chip-link:focus-visible {
+    outline: 2px solid #4285f4;
+    outline-offset: 2px;
+  }
+
+  .farm-map-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  }
+
+  .farm-map-dot--hotspot {
+    background: #ef4444;
+  }
+
+  .farm-map-dot--spray {
+    background: #16a34a;
+  }
+
+  .farm-map-dot--worker {
+    background: #4285f4;
+  }
+
+  .farm-map-detail-sheet {
+    position: absolute;
+    inset-inline: 12px;
+    bottom: 12px;
+    z-index: 1001;
+    border-radius: 20px;
+    background: rgb(255 255 255 / 98%);
+    padding: 16px;
+    box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
+    backdrop-filter: blur(12px);
+  }
+
+  .farm-map-popup .leaflet-popup-content-wrapper {
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 16%);
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes farm-map-worker-pulse {
+  0% {
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
 }
