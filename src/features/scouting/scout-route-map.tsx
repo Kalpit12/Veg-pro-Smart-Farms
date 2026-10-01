@@ -21,7 +21,7 @@ import {
   durationSeconds,
 } from "@/lib/route-metrics";
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend } from "@/lib/data-backend";
 import { isUuid } from "@/lib/uuid";
 import { useScoutingData } from "@/hooks/use-scouting-data";
 import {
@@ -33,6 +33,10 @@ import { listRoutePoints, listRoutePointsForRounds } from "@/services/supabase/s
 import { useScoutingStore } from "@/store/scouting-store";
 import { cn } from "@/lib/utils";
 import type { TrackPoint } from "@/features/scouting/scout-route-map-view";
+import { anchorByGreenhouseName } from "@/lib/greenhouse-locations";
+import { greenhouseMapCenter } from "@/lib/scout-route-alignment";
+import { useGreenhouseAnchorsSync } from "@/hooks/use-greenhouse-anchors-sync";
+import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
 
 const RouteMapView = dynamic(
   () => import("@/features/scouting/scout-route-map-view").then((m) => m.ScoutRouteMapView),
@@ -74,6 +78,8 @@ function stopsFromUnified(
 type ViewMode = "greenhouse" | "gps";
 
 export function ScoutRouteMap() {
+  useGreenhouseAnchorsSync();
+  const greenhouseAnchors = useGreenhouseAnchorStore((s) => s.anchors);
   const searchParams = useSearchParams();
   const roundFromUrl = searchParams.get("round");
   const demoRounds = useScoutingStore((s) => s.demoRounds);
@@ -83,7 +89,7 @@ export function ScoutRouteMap() {
   const [remoteRounds, setRemoteRounds] = useState<ScoutingRoundRow[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string>(() => {
     if (roundFromUrl) return roundFromUrl;
-    if (hasSupabaseEnv()) return "";
+    if (hasConfiguredBackend()) return "";
     return useScoutingStore.getState().demoRounds[0]?.id ?? "";
   });
   const [remoteStops, setRemoteStops] = useState<ScoutRouteStop[]>([]);
@@ -101,7 +107,7 @@ export function ScoutRouteMap() {
   }, [roundFromUrl]);
 
   const loadRounds = useCallback(async () => {
-    if (!hasSupabaseEnv()) return;
+    if (!hasConfiguredBackend()) return;
     const { data } = await listScoutingRounds(30);
     const rounds = (data as ScoutingRoundRow[]) ?? [];
     setRemoteRounds(rounds);
@@ -122,7 +128,7 @@ export function ScoutRouteMap() {
   }, [loadRounds, demoRecords.length]);
 
   const reloadRoundData = useCallback(() => {
-    if (!hasSupabaseEnv() || !isUuid(selectedRoundId)) return;
+    if (!hasConfiguredBackend() || !isUuid(selectedRoundId)) return;
     void listRecordsForRound(selectedRoundId).then(({ data, error }) => {
       if (error) {
         setRemoteStops([]);
@@ -165,12 +171,12 @@ export function ScoutRouteMap() {
 
   const demoRoundList = demoRounds.filter((r) => r.status === "completed" || r.status === "active");
 
-  const effectiveRoundId = hasSupabaseEnv()
+  const effectiveRoundId = hasConfiguredBackend()
     ? selectedRoundId
     : selectedRoundId || demoRoundList[0]?.id || "";
 
   const trackPoints: TrackPoint[] = useMemo(() => {
-    if (hasSupabaseEnv()) return remoteTrack;
+    if (hasConfiguredBackend()) return remoteTrack;
     return demoRoutePoints
       .filter((p) => p.roundId === effectiveRoundId)
       .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
@@ -179,7 +185,7 @@ export function ScoutRouteMap() {
 
   const heatPoints: TrackPoint[] = useMemo(() => {
     if (!showHeat) return [];
-    if (hasSupabaseEnv()) return aggregateHeat.length ? aggregateHeat : remoteTrack;
+    if (hasConfiguredBackend()) return aggregateHeat.length ? aggregateHeat : remoteTrack;
     return demoRoutePoints.map((p) => ({
       lat: p.latitude,
       lng: p.longitude,
@@ -188,7 +194,7 @@ export function ScoutRouteMap() {
   }, [showHeat, aggregateHeat, remoteTrack, demoRoutePoints]);
 
   useEffect(() => {
-    if (!showHeat || !hasSupabaseEnv() || !remoteRounds.length) {
+    if (!showHeat || !hasConfiguredBackend() || !remoteRounds.length) {
       setAggregateHeat([]);
       return;
     }
@@ -205,7 +211,7 @@ export function ScoutRouteMap() {
   }, [showHeat, remoteRounds]);
 
   const summary = useMemo(() => {
-    if (hasSupabaseEnv()) {
+    if (hasConfiguredBackend()) {
       const round = remoteRounds.find((r) => r.id === effectiveRoundId);
       if (!round) return null;
       const durationS =
@@ -292,7 +298,20 @@ export function ScoutRouteMap() {
     });
   }, [summary, coverage, trackPoints]);
 
+  const mapAnchor = useMemo(() => {
+    const name = summary?.greenhouseName;
+    if (!name) return null;
+    const row = anchorByGreenhouseName(name, greenhouseAnchors);
+    return row ? { lat: row.lat, lng: row.lng } : greenhouseMapCenter(name);
+  }, [summary?.greenhouseName, greenhouseAnchors]);
+
   const gpsCenter = useMemo(() => {
+    if (mapAnchor) return mapAnchor;
+    const gh = summary?.greenhouseName;
+    if (gh) {
+      const anchor = greenhouseMapCenter(gh);
+      if (anchor) return anchor;
+    }
     if (trackPoints.length) {
       const mid = trackPoints[Math.floor(trackPoints.length / 2)];
       return { lat: mid.lat, lng: mid.lng };
@@ -302,12 +321,14 @@ export function ScoutRouteMap() {
     const lat = gpsStops.reduce((s, p) => s + p.lat!, 0) / gpsStops.length;
     const lng = gpsStops.reduce((s, p) => s + p.lng!, 0) / gpsStops.length;
     return { lat, lng };
-  }, [summary, trackPoints]);
+  }, [summary, trackPoints, mapAnchor]);
 
   const hasStops = (summary?.stops.length ?? 0) > 0;
   const hasTrack = trackPoints.length > 0;
   const hasGps =
-    hasTrack || (summary?.stops ?? []).some((s) => s.lat != null && s.lng != null);
+    hasTrack ||
+    (summary?.stops ?? []).some((s) => s.lat != null && s.lng != null) ||
+    (summary?.stops ?? []).some((s) => s.columnNo > 0 && s.bayNo > 0);
   const hasContent = hasStops || hasTrack;
 
   useEffect(() => {
@@ -341,7 +362,8 @@ export function ScoutRouteMap() {
         <div>
           <h2 className="text-lg font-semibold">Scout routes</h2>
           <p className="text-sm text-muted-foreground">
-            Strava-style GPS track with start, finish, and observation pins.
+            Scarab-style: green outline = greenhouse grid; pins are GPS-adjusted to bay×column.
+            Blue line = scout walk track only (not visit order).
           </p>
         </div>
         <AppSelect
@@ -350,7 +372,7 @@ export function ScoutRouteMap() {
           value={effectiveRoundId}
           onChange={setSelectedRoundId}
           options={
-            hasSupabaseEnv()
+            hasConfiguredBackend()
               ? remoteRounds.map((r) => ({
                   value: r.id,
                   label: `${r.greenhouses?.name ?? "GH"} · ${format(new Date(r.started_at), "MMM d HH:mm")}`,
@@ -444,11 +466,29 @@ export function ScoutRouteMap() {
         <div className="space-y-3">
           <RouteMapView
             center={gpsCenter}
+            greenhouseName={summary?.greenhouseName ?? ""}
+            mapAnchor={mapAnchor}
             stops={summary?.stops ?? []}
             trackPoints={trackPoints}
             replayIndex={replayIndex}
             heatPoints={heatPoints}
           />
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1 w-6 rounded bg-[#2563eb]" /> Walk path
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="size-2.5 rounded-full bg-green-500" /> START
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="size-2.5 rounded-full border border-foreground bg-[repeating-linear-gradient(45deg,#111,#111_25%,#fff_25%,#fff_50%)]" />
+              STOP
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-3 rounded-sm border border-green-600 bg-green-500/20" /> House grid
+            </span>
+            <span>Numbered pins = observations</span>
+          </p>
           {trackPoints.length > 1 ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button

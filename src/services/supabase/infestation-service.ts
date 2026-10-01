@@ -1,5 +1,7 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import type { InfestationHotspot, InfestationStatus } from "@/types/db";
+import * as mssql from "@/services/mssql/ops-actions";
 
 export type ReportInfestationInput = {
   farm_id: string;
@@ -14,11 +16,13 @@ export type ReportInfestationInput = {
 };
 
 export async function reportInfestation(input: ReportInfestationInput) {
+  if (routeDataThroughMssql()) return mssql.mssqlReportInfestationAction(input);
   const supabase = createClient();
   return supabase.from("infestation_hotspots").insert(input).select().single();
 }
 
 export async function listHotspots(limit = 200) {
+  if (routeDataThroughMssql()) return mssql.mssqlListHotspotsAction(limit);
   const supabase = createClient();
   return supabase
     .from("infestation_hotspots")
@@ -32,6 +36,13 @@ export async function listHotspotsForHistory(options?: {
   since?: Date;
   limit?: number;
 }) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlListHotspotsForHistoryAction({
+      greenhouseId: options?.greenhouseId,
+      sinceIso: options?.since?.toISOString(),
+      limit: options?.limit,
+    });
+  }
   const supabase = createClient();
   let query = supabase
     .from("infestation_hotspots")
@@ -49,6 +60,7 @@ export async function listHotspotsForHistory(options?: {
 }
 
 export async function listActiveHotspots(limit = 50) {
+  if (routeDataThroughMssql()) return mssql.mssqlListActiveHotspotsAction(limit);
   const supabase = createClient();
   return supabase
     .from("infestation_hotspots")
@@ -62,6 +74,7 @@ export async function listActiveHotspots(limit = 50) {
 }
 
 export async function getHotspotById(id: string) {
+  if (routeDataThroughMssql()) return mssql.mssqlGetHotspotByIdAction(id);
   const supabase = createClient();
   return supabase
     .from("infestation_hotspots")
@@ -71,6 +84,9 @@ export async function getHotspotById(id: string) {
 }
 
 export async function listActiveHotspotsForGreenhouse(greenhouseId: string) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlListActiveHotspotsForGreenhouseAction(greenhouseId);
+  }
   const supabase = createClient();
   return supabase
     .from("infestation_hotspots")
@@ -83,11 +99,32 @@ export async function listActiveHotspotsForGreenhouse(greenhouseId: string) {
 }
 
 export async function updateHotspotStatus(id: string, status: InfestationStatus) {
+  if (routeDataThroughMssql()) return mssql.mssqlUpdateHotspotStatusAction(id, status);
   const supabase = createClient();
   return supabase.from("infestation_hotspots").update({ status }).eq("id", id);
 }
 
+export async function updateHotspotAfterSpray(
+  id: string,
+  options?: { severityAfter?: number | null },
+) {
+  if (routeDataThroughMssql()) return mssql.mssqlUpdateHotspotAfterSprayAction(id, options);
+  const supabase = createClient();
+  const patch: { status: InfestationStatus; severity?: number } = {
+    status: "sprayed",
+  };
+  if (
+    options?.severityAfter != null &&
+    options.severityAfter >= 1 &&
+    options.severityAfter <= 5
+  ) {
+    patch.severity = options.severityAfter;
+  }
+  return supabase.from("infestation_hotspots").update(patch).eq("id", id);
+}
+
 export async function getHotspotKpis() {
+  if (routeDataThroughMssql()) return mssql.mssqlGetHotspotKpisAction();
   const supabase = createClient();
   const today = new Date();
   today.setHours(0, 0, 0, 0);

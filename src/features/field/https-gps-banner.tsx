@@ -18,9 +18,8 @@ export function HttpsGpsBanner() {
 
   return (
     <p className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
-      This page is not HTTPS ({typeof window !== "undefined" ? window.location.host : ""}).
-      Phone browsers block GPS on plain HTTP. Open the production HTTPS URL (or localhost)
-      before walking the houses.
+      This link is not secure. Phone location will not work. Open the normal farm app link
+      (HTTPS) or use localhost before walking the houses.
     </p>
   );
 }

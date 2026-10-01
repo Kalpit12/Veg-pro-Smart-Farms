@@ -1,8 +1,11 @@
 "use server";
 
+import { getServerDataBackend } from "@/lib/data-backend";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv, hasSupabaseServiceRole } from "@/lib/supabase/config";
+import { requireServerSession } from "@/lib/mssql/session-server";
+import { mssqlCreateStaffAccountAction } from "@/services/mssql/ops-actions";
 import type { Role } from "@/types/db";
 
 export type StaffAccountRole = Extract<Role, "worker" | "supervisor">;
@@ -27,10 +30,21 @@ export type StaffProvisioningStatus = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function getStaffProvisioningStatus(): Promise<StaffProvisioningStatus> {
+  if (getServerDataBackend() === "mssql") {
+    try {
+      const session = await requireServerSession();
+      if (session.role !== "admin") {
+        return { canCreate: false, message: "Sign in as an admin to create accounts." };
+      }
+      return { canCreate: true, message: null };
+    } catch {
+      return { canCreate: false, message: "Sign in as an admin to create accounts." };
+    }
+  }
   if (!hasSupabaseEnv()) {
     return {
       canCreate: false,
-      message: "Supabase is not configured. Accounts cannot be created in demo mode.",
+      message: "Database is not configured. Accounts cannot be created in demo mode.",
     };
   }
   if (!hasSupabaseServiceRole()) {
@@ -61,8 +75,21 @@ export async function createStaffAccountAction(
     return { ok: false, error: "Role must be field worker or farm manager." };
   }
 
+  if (getServerDataBackend() === "mssql") {
+    const res = await mssqlCreateStaffAccountAction({
+      fullName,
+      email,
+      phone,
+      role,
+      password,
+    });
+    if (res.error) return { ok: false, error: res.error.message };
+    if (!res.data) return { ok: false, error: "Could not create account." };
+    return { ok: true, email: res.data.email, role: res.data.role, fullName: res.data.fullName };
+  }
+
   if (!hasSupabaseEnv()) {
-    return { ok: false, error: "Supabase is not configured on this server." };
+    return { ok: false, error: "Database is not configured on this server." };
   }
 
   const supabase = await createClient();

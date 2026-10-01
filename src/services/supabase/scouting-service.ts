@@ -1,5 +1,7 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import type { ScoutingIssueType, ScoutingRecord } from "@/types/db";
+import * as mssql from "@/services/mssql/scouting-actions";
 
 export type ScoutingObservationInput = {
   parameter_id: string;
@@ -23,15 +25,19 @@ export type CreateScoutingRecordInput = {
   latitude?: number | null;
   longitude?: number | null;
   notes?: string | null;
+  recorded_at?: string;
+  image_url?: string | null;
   observations: ScoutingObservationInput[];
 };
 
 export async function listCropCategories() {
+  if (routeDataThroughMssql()) return mssql.mssqlListCropCategoriesAction();
   const supabase = createClient();
   return supabase.from("crop_categories").select("*").order("name");
 }
 
 export async function listCropVarieties(categoryId?: string) {
+  if (routeDataThroughMssql()) return mssql.mssqlListCropVarietiesAction(categoryId);
   const supabase = createClient();
   let q = supabase
     .from("crop_varieties")
@@ -42,6 +48,7 @@ export async function listCropVarieties(categoryId?: string) {
 }
 
 export async function listScoutingParameters() {
+  if (routeDataThroughMssql()) return mssql.mssqlListScoutingParametersAction();
   const supabase = createClient();
   return supabase
     .from("scouting_parameters")
@@ -50,12 +57,17 @@ export async function listScoutingParameters() {
 }
 
 export async function createScoutingRecord(input: CreateScoutingRecordInput) {
+  if (routeDataThroughMssql()) return mssql.mssqlCreateScoutingRecordAction(input);
   const supabase = createClient();
   const { observations, ...record } = input;
+  const insertRow = {
+    ...record,
+    recorded_at: record.recorded_at ?? new Date().toISOString(),
+  };
 
   const { data: row, error } = await supabase
     .from("scouting_records")
-    .insert(record)
+    .insert(insertRow)
     .select()
     .single();
 
@@ -70,7 +82,10 @@ export async function createScoutingRecord(input: CreateScoutingRecordInput) {
         rating: o.rating,
       })),
     );
-    if (obsError) return { data: null, error: obsError };
+    if (obsError) {
+      await supabase.from("scouting_records").delete().eq("id", row.id);
+      return { data: null, error: obsError };
+    }
   }
 
   return { data: row as ScoutingRecord, error: null };
@@ -85,6 +100,7 @@ export type ScoutingRecordRow = ScoutingRecord & {
 };
 
 export async function listScoutingRecords(limit = 200) {
+  if (routeDataThroughMssql()) return mssql.mssqlListScoutingRecordsAction(limit);
   const supabase = createClient();
   return supabase
     .from("scouting_records")
@@ -101,6 +117,7 @@ export async function listScoutingRecords(limit = 200) {
 }
 
 export async function listScoutingRecordsSince(since: Date) {
+  if (routeDataThroughMssql()) return mssql.mssqlListScoutingRecordsSinceAction(since.toISOString());
   const supabase = createClient();
   return supabase
     .from("scouting_records")
@@ -120,6 +137,12 @@ export async function listScoutingForGreenhouseSince(
   greenhouseId: string,
   since: Date,
 ) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlListScoutingForGreenhouseSinceAction(
+      greenhouseId,
+      since.toISOString(),
+    );
+  }
   const supabase = createClient();
   return supabase
     .from("scouting_records")
@@ -141,6 +164,9 @@ export type ScoutingPressureRow = {
 };
 
 export async function getScoutingPressureByGreenhouse(since?: Date) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlGetScoutingPressureByGreenhouseAction(since?.toISOString());
+  }
   const supabase = createClient();
   let q = supabase
     .from("scouting_records")
@@ -161,7 +187,9 @@ export async function getScoutingPressureByGreenhouse(since?: Date) {
       (row.crop_varieties as { name?: string } | null)?.name ?? "Unknown";
     const key = `${gh}|${variety}|${row.issue_type}|${row.issue_name}`;
     const existing = map.get(key);
-    const rating = row.rating ?? 3;
+    if (row.rating == null) continue;
+    if (!row.issue_name || row.issue_name.trim().toLowerCase() === "none found") continue;
+    const rating = row.rating;
     if (existing) {
       existing.count += 1;
       existing.sum += rating;

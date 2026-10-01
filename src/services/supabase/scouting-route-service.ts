@@ -1,7 +1,9 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import { distanceBetweenPoints, durationSeconds } from "@/lib/route-metrics";
 import { isUuid } from "@/lib/uuid";
 import type { ScoutingRoutePoint, ScoutingRound } from "@/types/db";
+import * as mssql from "@/services/mssql/scouting-actions";
 
 export type RoutePointInput = {
   latitude: number;
@@ -11,6 +13,7 @@ export type RoutePointInput = {
 };
 
 export async function appendRoutePoints(roundId: string, points: RoutePointInput[]) {
+  if (routeDataThroughMssql()) return mssql.mssqlAppendRoutePointsAction(roundId, points);
   if (!isUuid(roundId) || !points.length) {
     return { data: [] as ScoutingRoutePoint[], error: null };
   }
@@ -47,6 +50,7 @@ export async function appendRoutePoints(roundId: string, points: RoutePointInput
 }
 
 export async function listRoutePoints(roundId: string) {
+  if (routeDataThroughMssql()) return mssql.mssqlListRoutePointsAction(roundId);
   if (!isUuid(roundId)) {
     return { data: [] as ScoutingRoutePoint[], error: null };
   }
@@ -59,6 +63,7 @@ export async function listRoutePoints(roundId: string) {
 }
 
 export async function listRoutePointsForRounds(roundIds: string[]) {
+  if (routeDataThroughMssql()) return mssql.mssqlListRoutePointsForRoundsAction(roundIds);
   const ids = roundIds.filter(isUuid);
   if (!ids.length) {
     return { data: [] as ScoutingRoutePoint[], error: null };
@@ -75,6 +80,7 @@ export async function finalizeRoundMetrics(
   roundId: string,
   options?: { coveragePct?: number | null },
 ) {
+  if (routeDataThroughMssql()) return mssql.mssqlFinalizeRoundMetricsAction(roundId, options);
   if (!isUuid(roundId)) {
     return { data: null, error: new Error("Invalid round id") };
   }

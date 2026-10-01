@@ -51,13 +51,13 @@ function toFailureCode(error: GeolocationPositionError): GeolocationFailureCode 
 export function geolocationErrorMessage(code: GeolocationFailureCode): string {
   switch (code) {
     case "PERMISSION_DENIED":
-      return "Location blocked in the browser — allow localhost in site settings.";
+      return "Location is blocked — allow location for this site in the phone or browser settings.";
     case "POSITION_UNAVAILABLE":
-      return "Location unavailable — on Windows, turn on Settings → Privacy → Location, then retry.";
+      return "Location unavailable — step outdoors with a clear sky, or pick a greenhouse below.";
     case "TIMEOUT":
-      return "Location timed out — move near a window, disable VPN, or pick a greenhouse below.";
+      return "Location timed out — wait for GPS outdoors, or pick a greenhouse below.";
     case "UNSUPPORTED":
-      return "GPS not available on this device.";
+      return "GPS is not available on this device.";
     default:
       return "Could not get location.";
   }
@@ -143,7 +143,7 @@ export function watchScoutingPosition(
         typeof position.coords.accuracy === "number" && Number.isFinite(position.coords.accuracy)
           ? position.coords.accuracy
           : null,
-      recordedAt: new Date().toISOString(),
+      recordedAt: new Date(position.timestamp || Date.now()).toISOString(),
     };
 
     // Hold steady against micro-jitter before higher-level filters run

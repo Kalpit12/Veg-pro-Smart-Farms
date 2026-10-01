@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend } from "@/lib/data-backend";
 import type { SprayProgramInput } from "@/lib/spray-work-program";
 import {
   listScoutingRecords,
   listScoutingRecordsSince,
   type ScoutingRecordRow,
 } from "@/services/supabase/scouting-service";
-import { useScoutingStore, type DemoScoutingRecord } from "@/store/scouting-store";
+import {
+  listScoutingRounds,
+  type ScoutingRoundRow,
+} from "@/services/supabase/scouting-round-service";
+import { useScoutingStore, type DemoScoutingRecord, type DemoScoutingRound } from "@/store/scouting-store";
 import type { ScoutingIssueType } from "@/types/db";
 
 export type UnifiedScoutingRecord = {
@@ -31,6 +35,7 @@ export type UnifiedScoutingRecord = {
   recordedAt: string;
   latitude: number | null;
   longitude: number | null;
+  imageUrl: string | null;
 };
 
 function fromDemo(r: DemoScoutingRecord): UnifiedScoutingRecord {
@@ -52,6 +57,7 @@ function fromDemo(r: DemoScoutingRecord): UnifiedScoutingRecord {
     recordedAt: r.recordedAt,
     latitude: r.latitude,
     longitude: r.longitude,
+    imageUrl: r.imageUrl ?? null,
   };
 }
 
@@ -74,6 +80,7 @@ function fromRemote(r: ScoutingRecordRow): UnifiedScoutingRecord {
     recordedAt: r.recorded_at,
     latitude: r.latitude,
     longitude: r.longitude,
+    imageUrl: r.image_url ?? null,
   };
 }
 
@@ -92,13 +99,84 @@ export function toSprayInput(r: UnifiedScoutingRecord): SprayProgramInput {
   };
 }
 
+export type UnifiedScoutingRound = {
+  id: string;
+  scoutName: string;
+  farmId: string;
+  greenhouseName: string;
+  greenhouseId: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: "active" | "completed";
+  stopCount: number;
+  distanceM: number;
+  durationS: number | null;
+  coveragePct: number | null;
+};
+
+function fromDemoRound(r: DemoScoutingRound): UnifiedScoutingRound {
+  return {
+    id: r.id,
+    scoutName: r.scoutName,
+    farmId: r.farmId,
+    greenhouseName: r.greenhouseName,
+    greenhouseId: r.greenhouseId,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt ?? null,
+    status: r.status,
+    stopCount: r.stopCount,
+    distanceM: r.distanceM ?? 0,
+    durationS: r.durationS ?? null,
+    coveragePct: r.coveragePct ?? null,
+  };
+}
+
+function fromRemoteRound(r: ScoutingRoundRow): UnifiedScoutingRound {
+  return {
+    id: r.id,
+    scoutName: r.users?.full_name ?? "Scout",
+    farmId: r.farm_id,
+    greenhouseName: r.greenhouses?.name ?? "—",
+    greenhouseId: r.greenhouse_id,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    status: r.status,
+    stopCount: r.stop_count,
+    distanceM: r.distance_m ?? 0,
+    durationS: r.duration_s,
+    coveragePct: r.coverage_pct,
+  };
+}
+
+export function useScoutingRounds(limit = 80) {
+  const demoRounds = useScoutingStore((s) => s.demoRounds);
+  const [remote, setRemote] = useState<UnifiedScoutingRound[]>([]);
+
+  const load = useCallback(async () => {
+    if (!hasConfiguredBackend()) return;
+    const { data } = await listScoutingRounds(limit);
+    setRemote((data as ScoutingRoundRow[] | null)?.map(fromRemoteRound) ?? []);
+  }, [limit]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useRealtimeScouting(load);
+
+  return {
+    rounds: hasConfiguredBackend() ? remote : demoRounds.map(fromDemoRound),
+    refresh: load,
+  };
+}
+
 export function useScoutingData(days = 30) {
   const demoRecords = useScoutingStore((s) => s.demoRecords);
   const [remote, setRemote] = useState<UnifiedScoutingRecord[]>([]);
-  const [loading, setLoading] = useState(hasSupabaseEnv());
+  const [loading, setLoading] = useState(hasConfiguredBackend());
 
   const load = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (!hasConfiguredBackend()) {
       setLoading(false);
       return;
     }
@@ -116,7 +194,7 @@ export function useScoutingData(days = 30) {
 
   useRealtimeScouting(load);
 
-  const records = hasSupabaseEnv()
+  const records = hasConfiguredBackend()
     ? remote
     : demoRecords.map(fromDemo);
 
@@ -128,7 +206,7 @@ export function useAllScoutingRecords() {
   const [remote, setRemote] = useState<UnifiedScoutingRecord[]>([]);
 
   const load = useCallback(async () => {
-    if (!hasSupabaseEnv()) return;
+    if (!hasConfiguredBackend()) return;
     const { data } = await listScoutingRecords(500);
     setRemote((data as ScoutingRecordRow[] | null)?.map(fromRemote) ?? []);
   }, []);
@@ -139,5 +217,5 @@ export function useAllScoutingRecords() {
 
   useRealtimeScouting(load);
 
-  return hasSupabaseEnv() ? remote : demoRecords.map(fromDemo);
+  return hasConfiguredBackend() ? remote : demoRecords.map(fromDemo);
 }

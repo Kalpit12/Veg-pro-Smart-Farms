@@ -4,6 +4,7 @@
  */
 
 import { STAR_GREENHOUSE_ROWS, STAR_VARIETY_ORDER } from "@/lib/star-greenhouse-rows";
+import { DEMO_LAYOUT_ORIGIN, reprojectDemoLayoutToFarm } from "@/lib/farm-gps-base";
 
 export const BEMACK_FARM_NAME = "Star" as const;
 
@@ -60,8 +61,19 @@ export const ISSUE_SHORT_CODES: Record<string, string> = {
   Agrobacterium: "AG",
 };
 
+export function issueShortCode(name: string | null | undefined): string {
+  if (!name) return "";
+  const trimmed = name.trim();
+  if (ISSUE_SHORT_CODES[trimmed]) return ISSUE_SHORT_CODES[trimmed];
+  const key = Object.keys(ISSUE_SHORT_CODES).find(
+    (k) => k.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (key) return ISSUE_SHORT_CODES[key];
+  return "";
+}
+
 export function issueLabel(name: string) {
-  const code = ISSUE_SHORT_CODES[name];
+  const code = issueShortCode(name);
   return code ? `${name} (${code})` : name;
 }
 
@@ -86,7 +98,7 @@ export const SCOUTING_PARAMETERS = [
 
 export type ScoutingParameterId = (typeof SCOUTING_PARAMETERS)[number]["id"];
 
-const GH_BASE = { lat: -1.2921, lng: 36.8219 };
+const GH_BASE = DEMO_LAYOUT_ORIGIN;
 
 export function bemackGreenhouseId(name: string) {
   const row = STAR_GREENHOUSE_ROWS.find((r) => r.name === name);
@@ -100,10 +112,11 @@ export function bemackQrValue(greenhouseName: string) {
 export function bemackGreenhouseCoords(index: number) {
   const row = Math.floor(index / 8);
   const col = index % 8;
-  return {
+  const demo = {
     lat: GH_BASE.lat + row * 0.00045,
     lng: GH_BASE.lng + col * 0.00045,
   };
+  return reprojectDemoLayoutToFarm(demo.lat, demo.lng);
 }
 
 export function starGreenhouseRow(name: string) {

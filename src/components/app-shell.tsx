@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Droplets,
   History,
+  Home,
   LogOut,
   MapPin,
   Menu,
@@ -27,6 +28,7 @@ export type NavItem = {
   label: string;
   icon:
     | "dashboard"
+    | "home"
     | "map"
     | "workers"
     | "history"
@@ -39,6 +41,7 @@ export type NavItem = {
 
 const iconMap = {
   dashboard: BarChart3,
+  home: Home,
   map: MapPin,
   workers: Users,
   history: History,
@@ -138,8 +141,8 @@ function SidebarPanel({
 function workspaceCopy(roleMode: "worker" | "manager" | "admin") {
   if (roleMode === "worker") {
     return {
-      title: "Field worker workspace",
-      description: "Live GPS tracking, scouting stops, and infestation reports from the field.",
+      title: "Worker",
+      description: "Check your greenhouse and log what you find.",
     };
   }
   if (roleMode === "admin") {

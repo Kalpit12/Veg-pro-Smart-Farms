@@ -1,5 +1,6 @@
 "use client";
 
+import { FieldWriteQueueSync } from "@/features/field/field-write-queue-sync";
 import { LogSprayForm } from "@/features/infestation/log-spray-form";
 import { PendingInfestationQueue } from "@/features/infestation/pending-infestation-queue";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
@@ -9,6 +10,7 @@ export function ManagerSprayPanel() {
 
   return (
     <section className="space-y-4">
+      <FieldWriteQueueSync />
       <PendingInfestationQueue />
 
       <div className="glass-card rounded-2xl p-4">

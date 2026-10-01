@@ -1,6 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getServerDataBackend } from "@/lib/data-backend";
+import { findUserByEmail, verifyMssqlPassword } from "@/lib/auth/mssql-credentials";
+import {
+  clearSessionCookie,
+  getSessionFromCookies,
+  setSessionCookie,
+} from "@/lib/auth/session";
 import type { Role } from "@/types/db";
 
 export type SignInResult =
@@ -15,10 +22,55 @@ function networkErrorMessage(error: unknown) {
   return raw || "Sign in failed.";
 }
 
+export async function getSessionAction(): Promise<{
+  id: string;
+  role: Role;
+  email: string;
+} | null> {
+  const session = await getSessionFromCookies();
+  if (!session) return null;
+  return { id: session.sub, role: session.role, email: session.email };
+}
+
 export async function signInWithPasswordAction(
   email: string,
   password: string,
 ): Promise<SignInResult> {
+  const backend = getServerDataBackend();
+
+  if (backend === "mssql") {
+    try {
+      const user = await findUserByEmail(email);
+      if (!user) {
+        return { ok: false, error: "Invalid email or password." };
+      }
+      const valid = await verifyMssqlPassword(user, password);
+      if (!valid) {
+        return { ok: false, error: "Invalid email or password." };
+      }
+      await setSessionCookie({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      });
+      return { ok: true, role: user.role };
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : String(error);
+      if (/MSSQL|SESSION_SECRET|ECONN|ETIMEOUT|login failed/i.test(raw)) {
+        return {
+          ok: false,
+          error:
+            "Cannot reach the VegPro database. Check VPN, MSSQL_* env vars, and that 001_schema.sql was applied.",
+        };
+      }
+      return { ok: false, error: raw || "Sign in failed." };
+    }
+  }
+
+  if (backend === "demo") {
+    return { ok: false, error: "Database is not configured." };
+  }
+
   try {
     const supabase = await createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -42,6 +94,13 @@ export async function signInWithPasswordAction(
 }
 
 export async function signOutAction() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  const backend = getServerDataBackend();
+  if (backend === "mssql") {
+    await clearSessionCookie();
+    return;
+  }
+  if (backend === "supabase") {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+  }
 }

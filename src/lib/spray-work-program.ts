@@ -72,7 +72,9 @@ export function buildSprayWorkProgram(records: SprayProgramInput[]): SprayWorkIt
   });
 
   for (const r of sorted) {
-    const rating = r.rating ?? 3;
+    if (!r.issue || r.issue.trim().toLowerCase() === "none found") continue;
+    if (r.rating == null) continue;
+    const rating = r.rating;
     if (rating < 3) continue;
 
     const key = `${r.greenhouseName}|${r.variety}|${r.issue}|${r.columnNo}|${r.bayNo}`;
@@ -88,7 +90,7 @@ export function buildSprayWorkProgram(records: SprayProgramInput[]): SprayWorkIt
       issueType: r.issueType,
       issue: r.issue,
       rating,
-      location: `Bed ${r.beds} · Col ${r.columnNo} · Bay ${r.bayNo}`,
+      location: `Col ${r.columnNo} · Bay ${r.bayNo}`,
       productHint: productFor(r.issueType, r.issue),
       action:
         priority === "urgent"

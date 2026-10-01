@@ -207,7 +207,7 @@ export function TrendsGrid() {
       sprays: sprayRows,
       dateLabels,
     });
-  }, [days, mode, filteredRows, sprays, issueType, issue, variety]);
+  }, [days, mode, filteredRows, sprays, issueType, issue, variety, sourceRows.length]);
 
   const sortedGreenhouses = useMemo(() => {
     const latest = model.dates[model.dates.length - 1];

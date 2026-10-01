@@ -8,8 +8,8 @@ import type { VariantProps } from "class-variance-authority";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatWorkerLogoutMessage } from "@/lib/worker-logout-alert";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
-import { createClient } from "@/lib/supabase/client";
+import { hasSupabaseEnv } from "@/lib/data-backend";
+import { signOutAction } from "@/features/auth/sign-in-action";
 import { notifyAdminWorkerLogout } from "@/services/worker-logout-notify";
 import { useScanStore } from "@/store/scan-store";
 import { cn } from "@/lib/utils";
@@ -61,10 +61,7 @@ export function LogoutButton({
         }
       }
 
-      if (hasSupabaseEnv()) {
-        const supabase = createClient();
-        await supabase.auth.signOut();
-      }
+      await signOutAction();
 
       document.cookie = "demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       document.cookie = "demo_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";

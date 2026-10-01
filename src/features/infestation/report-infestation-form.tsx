@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,7 +45,12 @@ const PlantViewer = dynamic(
     import("@/features/infestation/interactive-plant-viewer").then(
       (m) => m.InteractivePlantViewer,
     ),
-  { ssr: false, loading: () => <Skeleton className="aspect-[2/3] w-full rounded-2xl" /> },
+  {
+    ssr: false,
+    loading: () => (
+      <Skeleton className="mx-auto aspect-[2/3] h-[min(52vh,380px)] w-auto max-w-full rounded-2xl" />
+    ),
+  },
 );
 
 const schema = z
@@ -87,6 +92,8 @@ export function ReportInfestationForm({
   const [submitting, setSubmitting] = useState(false);
   const [gpsLabel, setGpsLabel] = useState("Will capture on submit");
   const [file, setFile] = useState<File | null>(null);
+  const [showPlantPicker, setShowPlantPicker] = useState(true);
+  const kindStepRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const scan = useScanStore();
   const resumeHotspot = useResumeHotspotStore((s) => s.hotspot);
@@ -125,7 +132,17 @@ export function ReportInfestationForm({
     if (current && currentKind && !issueAllowedInZone(current, id)) {
       form.setValue("issue_name", "", { shouldValidate: false });
     }
+    // Collapse the tall plant so Pest / Disease is on-screen without scrolling.
+    setShowPlantPicker(false);
   };
+
+  useEffect(() => {
+    if (!zoneId || showPlantPicker) return;
+    const id = window.requestAnimationFrame(() => {
+      kindStepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [zoneId, showPlantPicker]);
 
   const handleKindSelect = (next: IssueKind) => {
     const prev = form.getValues("kind");
@@ -164,6 +181,7 @@ export function ReportInfestationForm({
       form.setValue("zone", preferredZoneForIssue(fromObservation.issueName), {
         shouldValidate: true,
       });
+      setShowPlantPicker(false);
     }
     form.setValue("notes", formatScoutHandoffNotes(fromObservation));
   }, [fromObservation, form]);
@@ -208,7 +226,7 @@ export function ReportInfestationForm({
       setSubmitting(true);
       try {
         const live = await captureGps({
-          allowDemoFallback: true,
+          allowDemoFallback: !hasSupabaseEnv(),
           anchorFallback: gpsAnchorForFieldWork(resumeHotspot, scan.greenhouseId),
         });
         const coords =
@@ -243,6 +261,7 @@ export function ReportInfestationForm({
           });
           form.reset({ issue_name: "", notes: "" });
           setFile(null);
+          setShowPlantPicker(true);
           onSuccess?.();
           return;
         }
@@ -253,8 +272,24 @@ export function ReportInfestationForm({
           return;
         }
 
-        if (file) {
-          await uploadActivityEvidence(file);
+        const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+
+        if (file && !offline) {
+          try {
+            await uploadActivityEvidence(file);
+          } catch {
+            toast({
+              title: "Photo did not upload",
+              description: "The pest report will still save without the photo.",
+              tone: "default",
+            });
+          }
+        } else if (file && offline) {
+          toast({
+            title: "Photo skipped while offline",
+            description: "The report is queued. Take the photo again after you reconnect if needed.",
+            tone: "default",
+          });
         }
 
         const payload = {
@@ -283,6 +318,7 @@ export function ReportInfestationForm({
           });
           form.reset({ issue_name: "", notes: "" });
           setFile(null);
+          setShowPlantPicker(true);
           onSuccess?.();
         };
 
@@ -346,25 +382,46 @@ export function ReportInfestationForm({
         </p>
       ) : (
         <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
-          Waiting for GPS — allow location access on the Field work page, or pick a
-          greenhouse in Live GPS above.
+          Waiting for greenhouse — turn on location, or pick a greenhouse in Where are you?
+          above.
         </p>
       )}
 
       <div className="space-y-2">
         <p className="text-sm font-medium">1. Tap where you see the issue</p>
-        <PlantViewer selectedZone={zoneId ?? null} onSelectZone={handleZoneSelect} />
+        {showPlantPicker || !zone ? (
+          <PlantViewer selectedZone={zoneId ?? null} onSelectZone={handleZoneSelect} />
+        ) : (
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-3 py-3 text-left"
+            onClick={() => setShowPlantPicker(true)}
+          >
+            <span>
+              <span className="block text-sm font-semibold">{zone.label}</span>
+              <span className="text-xs text-muted-foreground">{zone.description}</span>
+            </span>
+            <span className="shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium">
+              Change
+            </span>
+          </button>
+        )}
         {form.formState.errors.zone ? (
           <p className="text-sm text-destructive">{form.formState.errors.zone.message}</p>
         ) : null}
       </div>
 
       {zone ? (
-        <div className="space-y-3 rounded-2xl border border-border bg-muted/20 p-3">
-          <div>
-            <p className="text-sm font-semibold">{zone.label}</p>
-            <p className="text-xs text-muted-foreground">{zone.description}</p>
-          </div>
+        <div
+          ref={kindStepRef}
+          className="scroll-mt-20 space-y-3 rounded-2xl border border-border bg-muted/20 p-3"
+        >
+          {showPlantPicker ? (
+            <div>
+              <p className="text-sm font-semibold">{zone.label}</p>
+              <p className="text-xs text-muted-foreground">{zone.description}</p>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <span className="text-sm font-medium">2. Is this a pest or a disease?</span>
@@ -412,7 +469,7 @@ export function ReportInfestationForm({
                   3. {kind === "pest" ? "Pest type" : "Disease"} for this plant section
                 </span>
                 <p className="text-xs text-muted-foreground">
-                  VegPro list — only issues that affect the {zone.label.toLowerCase()} are shown.
+                  Only issues for the {zone.label.toLowerCase()} are shown.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {options.map((name) => (

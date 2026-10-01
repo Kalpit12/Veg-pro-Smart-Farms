@@ -9,21 +9,38 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { captureGps, formatGps } from "@/lib/gps";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
+import { putEvidenceBlob } from "@/lib/offline-evidence-store";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { useFieldOpsStore } from "@/store/field-ops-store";
+import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
 import { useScanStore } from "@/store/scan-store";
 import { getCurrentUser } from "@/services/supabase/auth-service";
-import { listActiveHotspots, listActiveHotspotsForGreenhouse, getHotspotById } from "@/services/supabase/infestation-service";
+import {
+  getHotspotById,
+  listActiveHotspots,
+  listActiveHotspotsForGreenhouse,
+  updateHotspotAfterSpray,
+} from "@/services/supabase/infestation-service";
 import { logSpray } from "@/services/supabase/spray-service";
 import { uploadActivityEvidence } from "@/services/supabase/storage-service";
-import { updateHotspotStatus } from "@/services/supabase/infestation-service";
 
-const schema = z.object({
-  product_name: z.string().min(2, "Enter product name"),
-  notes: z.string().optional(),
-  hotspot_id: z.string().optional(),
-});
+const schema = z
+  .object({
+    product_name: z.string().min(2, "Enter product name"),
+    notes: z.string().optional(),
+    hotspot_id: z.string().optional(),
+    severity_after: z.number().int().min(1).max(5).optional(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.hotspot_id && (values.severity_after == null || Number.isNaN(values.severity_after))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["severity_after"],
+        message: "Record post-spray severity (1–5) to close the evaluate loop",
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -57,10 +74,16 @@ export function LogSprayForm({
   const clearResumeHotspot = useResumeHotspotStore((s) => s.clear);
   const addDemoSpray = useFieldOpsStore((s) => s.addDemoSpray);
   const demoHotspots = useFieldOpsStore((s) => s.demoHotspots);
+  const enqueueSpray = useFieldWriteQueueStore((s) => s.enqueueSpray);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { product_name: "", notes: "", hotspot_id: "" },
+    defaultValues: {
+      product_name: "",
+      notes: "",
+      hotspot_id: "",
+      severity_after: undefined,
+    },
   });
 
   useEffect(() => {
@@ -108,6 +131,18 @@ export function LogSprayForm({
   }, [resumeHotspot?.id, form]);
 
   const selectedHotspotId = form.watch("hotspot_id");
+  const severityAfter = form.watch("severity_after");
+
+  const selectedHotspot =
+    hotspots.find((h) => h.id === selectedHotspotId) ??
+    demoHotspots.find((h) => h.id === selectedHotspotId) ??
+    null;
+  const severityBefore =
+    selectedHotspot && "severity" in selectedHotspot
+      ? selectedHotspot.severity
+      : resumeHotspot?.id === selectedHotspotId
+        ? (resumeHotspot?.severity ?? null)
+        : null;
 
   useEffect(() => {
     if (!selectedHotspotId) return;
@@ -161,11 +196,23 @@ export function LogSprayForm({
             : null;
 
           if (hotspotId && hasSupabaseEnv()) {
-            const { data: authoritative, error: hotspotError } = await getHotspotById(hotspotId);
-            if (hotspotError || !authoritative) {
-              throw hotspotError ?? new Error("Could not load the selected worker report.");
+            try {
+              const { data: authoritative, error: hotspotError } =
+                await getHotspotById(hotspotId);
+              if (!hotspotError && authoritative) {
+                linkedHotspot = authoritative as SprayHotspotOption;
+              } else if (!linkedHotspot) {
+                if (hotspotError && isLikelyOfflineError(hotspotError)) {
+                  // Keep the list/demo copy so we can still queue the spray.
+                } else {
+                  throw hotspotError ?? new Error("Could not load the selected worker report.");
+                }
+              }
+            } catch (hotspotLoadError) {
+              if (!linkedHotspot || !isLikelyOfflineError(hotspotLoadError)) {
+                throw hotspotLoadError;
+              }
             }
-            linkedHotspot = authoritative as SprayHotspotOption;
           }
 
           const farmId =
@@ -213,7 +260,7 @@ export function LogSprayForm({
                     longitude: resumeHotspot.longitude,
                   }
                 : await captureGps({
-                    allowDemoFallback: true,
+                    allowDemoFallback: !hasSupabaseEnv(),
                     anchorFallback: gpsAnchorForFieldWork(null, greenhouseId),
                   });
           setGpsLabel(formatGps(coords));
@@ -232,16 +279,31 @@ export function LogSprayForm({
               notes: values.notes,
               hotspot_id: hotspotId,
               workerName: actorName,
+              severity_before: hotspotId
+                ? (linkedHotspot && "severity" in linkedHotspot
+                    ? linkedHotspot.severity
+                    : resumeHotspot?.severity ?? null)
+                : null,
+              severity_after: hotspotId ? (values.severity_after ?? null) : null,
             });
             toast({
               title: "Spray logged",
               description:
                 audience === "manager"
-                  ? "Visible to admin on history and activity feed."
-                  : "Visible on manager map and history.",
+                  ? hotspotId && values.severity_after != null
+                    ? `Evaluate ${linkedHotspot && "severity" in linkedHotspot ? linkedHotspot.severity : "—"}→${values.severity_after}/5. Visible to admin on history.`
+                    : "Visible to admin on history and activity feed."
+                  : hotspotId && values.severity_after != null
+                    ? `Evaluate recorded ${values.severity_after}/5 after spray.`
+                    : "Visible on manager map and history.",
               tone: "success",
             });
-            form.reset();
+            form.reset({
+              product_name: "",
+              notes: "",
+              hotspot_id: "",
+              severity_after: undefined,
+            });
             setFile(null);
             if (resumeHotspot?.id === hotspotId) {
               clearResumeHotspot();
@@ -256,12 +318,63 @@ export function LogSprayForm({
             return;
           }
 
+          const offline =
+            typeof navigator !== "undefined" && navigator.onLine === false;
+
           let imagePath: string | null = null;
-          if (file) {
-            imagePath = await uploadActivityEvidence(file);
+          let pendingPhoto:
+            | { blobKey: string; fileName: string; contentType: string }
+            | undefined;
+          if (file && !offline) {
+            try {
+              imagePath = await uploadActivityEvidence(file);
+            } catch (uploadError) {
+              if (isLikelyOfflineError(uploadError) && file) {
+                const blobKey = `spray-${crypto.randomUUID()}`;
+                await putEvidenceBlob(blobKey, file, {
+                  fileName: file.name,
+                  contentType: file.type || "image/jpeg",
+                });
+                pendingPhoto = {
+                  blobKey,
+                  fileName: file.name,
+                  contentType: file.type || "image/jpeg",
+                };
+              } else if (!isLikelyOfflineError(uploadError)) {
+                toast({
+                  title: "Photo did not upload",
+                  description: "Spray will still save without the photo.",
+                  tone: "default",
+                });
+              }
+            }
+          } else if (file && offline) {
+            const blobKey = `spray-${crypto.randomUUID()}`;
+            await putEvidenceBlob(blobKey, file, {
+              fileName: file.name,
+              contentType: file.type || "image/jpeg",
+            });
+            pendingPhoto = {
+              blobKey,
+              fileName: file.name,
+              contentType: file.type || "image/jpeg",
+            };
+            toast({
+              title: "Photo queued offline",
+              description: "Photo will upload with this spray when you reconnect.",
+              tone: "default",
+            });
           }
 
-          const { error } = await logSpray({
+          const beforeSeverity =
+            hotspotId && linkedHotspot && "severity" in linkedHotspot
+              ? linkedHotspot.severity
+              : hotspotId
+                ? (resumeHotspot?.severity ?? null)
+                : null;
+          const afterSeverity = hotspotId ? (values.severity_after ?? null) : null;
+
+          const payload = {
             worker_id: user.id,
             hotspot_id: hotspotId,
             farm_id: farmId,
@@ -271,35 +384,95 @@ export function LogSprayForm({
             product_name: values.product_name,
             notes: values.notes || null,
             image_url: imagePath,
-          });
+            severity_before: beforeSeverity,
+            severity_after: afterSeverity,
+          };
 
-          if (error) throw error;
+          const finishSpray = (queued: boolean) => {
+            if (resumeHotspot?.id === hotspotId) {
+              clearResumeHotspot();
+            }
+            toast({
+              title: queued ? "Spray queued" : "Spray logged",
+              description: queued
+                ? "No signal — this spray will upload when you reconnect."
+                : afterSeverity != null && beforeSeverity != null
+                  ? `Evaluate ${beforeSeverity}→${afterSeverity}/5. ${
+                      audience === "manager"
+                        ? "Visible to admin on history and activity feed."
+                        : "Visible on manager map and history."
+                    }`
+                  : audience === "manager"
+                    ? "Visible to admin on history and activity feed."
+                    : undefined,
+              tone: queued ? "default" : "success",
+            });
+            form.reset({
+              product_name: "",
+              notes: "",
+              hotspot_id: "",
+              severity_after: undefined,
+            });
+            setFile(null);
+            onSuccess?.();
+          };
+
+          if (offline || pendingPhoto) {
+            enqueueSpray(payload, {
+              markHotspotSprayed: Boolean(hotspotId),
+              pendingPhoto,
+            });
+            finishSpray(true);
+            return;
+          }
+
+          const { error } = await logSpray(payload);
+
+          if (error) {
+            if (isLikelyOfflineError(error)) {
+              enqueueSpray(payload, {
+                markHotspotSprayed: Boolean(hotspotId),
+                pendingPhoto,
+              });
+              finishSpray(true);
+              return;
+            }
+            throw error;
+          }
 
           if (hotspotId) {
-            await updateHotspotStatus(hotspotId, "sprayed");
+            const statusResult = await updateHotspotAfterSpray(hotspotId, {
+              severityAfter: afterSeverity,
+            });
+            if (statusResult.error && !isLikelyOfflineError(statusResult.error)) {
+              throw statusResult.error;
+            }
+            if (statusResult.error && isLikelyOfflineError(statusResult.error)) {
+              // Spray already saved; hotspot status can be corrected later.
+              toast({
+                title: "Spray saved",
+                description:
+                  "Hotspot status could not update offline — it will stay open until you reconnect and spray again or update status.",
+                tone: "default",
+              });
+            }
           }
 
-          if (resumeHotspot?.id === hotspotId) {
-            clearResumeHotspot();
-          }
-
-          toast({
-            title: "Spray logged",
-            description:
-              audience === "manager"
-                ? "Visible to admin on history and activity feed."
-                : undefined,
-            tone: "success",
-          });
-          form.reset();
-          setFile(null);
-          onSuccess?.();
+          finishSpray(false);
         } catch (e) {
-          toast({
-            title: "Could not save spray",
-            description: e instanceof Error ? e.message : "Unknown error",
-            tone: "error",
-          });
+          if (isLikelyOfflineError(e)) {
+            toast({
+              title: "Could not reach server",
+              description: "Check signal and try again, or the form will queue on retry.",
+              tone: "error",
+            });
+          } else {
+            toast({
+              title: "Could not save spray",
+              description: e instanceof Error ? e.message : "Unknown error",
+              tone: "error",
+            });
+          }
         } finally {
           setSubmitting(false);
         }
@@ -347,16 +520,57 @@ export function LogSprayForm({
         <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
           Spraying at{" "}
           <span className="font-semibold">
-            {hotspots.find((h) => h.id === selectedHotspotId)?.greenhouses?.name ??
+            {selectedHotspot?.greenhouses?.name ??
               resumeHotspot?.greenhouse_name ??
               "—"}
           </span>{" "}
-          for severity{" "}
-          {hotspots.find((h) => h.id === selectedHotspotId)?.severity ??
-            resumeHotspot?.severity ??
-            "—"}
-          /5
+          — before severity{" "}
+          <span className="font-semibold tabular-nums">
+            {severityBefore ?? "—"}/5
+          </span>
         </p>
+      ) : null}
+
+      {selectedHotspotId ? (
+        <fieldset className="space-y-2 rounded-xl border border-border p-3" data-testid="spray-evaluate">
+          <legend className="px-1 text-sm font-semibold">Evaluate after spray</legend>
+          <p className="text-xs text-muted-foreground">
+            Before: {severityBefore ?? "—"}/5. Pick the severity you see now (required for
+            linked reports).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5].map((level) => (
+              <button
+                key={level}
+                type="button"
+                className={
+                  severityAfter === level
+                    ? "rounded-lg border border-primary bg-primary/15 px-3 py-2 text-sm font-semibold"
+                    : "rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                }
+                onClick={() =>
+                  form.setValue("severity_after", level, { shouldValidate: true })
+                }
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+          {form.formState.errors.severity_after ? (
+            <p className="text-sm text-destructive">
+              {form.formState.errors.severity_after.message}
+            </p>
+          ) : severityBefore != null && severityAfter != null ? (
+            <p className="text-xs text-muted-foreground">
+              Change: {severityBefore}→{severityAfter}
+              {severityAfter < severityBefore
+                ? " (improved)"
+                : severityAfter > severityBefore
+                  ? " (worse)"
+                  : " (unchanged)"}
+            </p>
+          ) : null}
+        </fieldset>
       ) : null}
 
       <label className="block space-y-1">

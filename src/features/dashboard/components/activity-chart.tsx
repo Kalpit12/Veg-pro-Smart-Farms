@@ -21,7 +21,7 @@ import {
 import { VegProChartTooltip } from "@/features/dashboard/components/vegpro-chart-tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend } from "@/lib/data-backend";
 import { getWeeklyInfestationTrends } from "@/services/supabase/dashboard-service";
 
 const demoData = [
@@ -40,7 +40,7 @@ export function ActivityChart() {
   const [series, setSeries] = useState(demoData);
 
   const load = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (!hasConfiguredBackend()) {
       setSeries(demoData);
       setLoading(false);
       return;

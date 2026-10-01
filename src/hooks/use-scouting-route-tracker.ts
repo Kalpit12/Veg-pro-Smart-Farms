@@ -5,10 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { watchScoutingPosition, type GpsPositionSample } from "@/lib/gps";
 import { distanceBetweenPoints, durationSeconds, formatDistance, formatDuration } from "@/lib/route-metrics";
 import { checkGreenhouseGeofence } from "@/lib/scouting-geofence";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { appendRoutePoints } from "@/services/supabase/scouting-route-service";
 import { upsertWorkerPosition } from "@/services/supabase/position-service";
 import { getCurrentUser } from "@/services/supabase/auth-service";
+import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
 import { useScoutingRouteBufferStore } from "@/store/scouting-route-buffer-store";
 import { useScoutingStore } from "@/store/scouting-store";
 import { useScanStore } from "@/store/scan-store";
@@ -35,7 +36,10 @@ function rejectHint(
   return null;
 }
 
-export function useScoutingRouteTracker(activeRoundId: string | null) {
+export function useScoutingRouteTracker(
+  activeRoundId: string | null,
+  startedAt?: string | null,
+) {
   const greenhouseId = useScanStore((s) => s.greenhouseId);
   const sessionGreenhouseId = useScoutingSessionStore((s) => s.session?.greenhouseId);
   const lockedGreenhouseId = sessionGreenhouseId ?? greenhouseId;
@@ -56,40 +60,58 @@ export function useScoutingRouteTracker(activeRoundId: string | null) {
   const flushingRef = useRef(false);
   const lastPublishRef = useRef(0);
 
-  const flush = useCallback(async () => {
-    if (!activeRoundId || flushingRef.current) return;
-    const unsynced = getUnsynced(activeRoundId);
-    if (!unsynced.length) return;
+  const flush = useCallback(
+    async (options?: { all?: boolean }) => {
+      if (!activeRoundId) return { remaining: 0 };
+      const maxLoops = options?.all ? 200 : 1;
 
-    if (!hasSupabaseEnv()) {
-      markSynced(unsynced.map((p) => p.id));
-      return;
-    }
+      for (let i = 0; i < 40 && flushingRef.current; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
 
-    flushingRef.current = true;
-    try {
-      const batch = unsynced.slice(0, FLUSH_BATCH);
-      const { error } = await appendRoutePoints(
-        activeRoundId,
-        batch.map((p) => ({
-          latitude: p.latitude,
-          longitude: p.longitude,
-          accuracy_m: p.accuracyM,
-          recorded_at: p.recordedAt,
-        })),
-      );
-      if (!error) markSynced(batch.map((p) => p.id));
-    } finally {
-      flushingRef.current = false;
-    }
-  }, [activeRoundId, getUnsynced, markSynced]);
+      if (isOfflineDemo()) {
+        const unsynced = getUnsynced(activeRoundId);
+        if (unsynced.length) markSynced(unsynced.map((p) => p.id));
+        return { remaining: 0 };
+      }
+
+      flushingRef.current = true;
+      try {
+        for (let i = 0; i < maxLoops; i++) {
+          const unsynced = getUnsynced(activeRoundId);
+          if (!unsynced.length) return { remaining: 0 };
+          const batch = unsynced.slice(0, FLUSH_BATCH);
+          const { error } = await appendRoutePoints(
+            activeRoundId,
+            batch.map((p) => ({
+              latitude: p.latitude,
+              longitude: p.longitude,
+              accuracy_m: p.accuracyM,
+              recorded_at: p.recordedAt,
+            })),
+          );
+          if (error) throw error;
+          markSynced(batch.map((p) => p.id));
+          if (!options?.all) break;
+        }
+        return { remaining: getUnsynced(activeRoundId).length };
+      } finally {
+        flushingRef.current = false;
+      }
+    },
+    [activeRoundId, getUnsynced, markSynced],
+  );
 
   const onSample = useCallback(
     (sample: GpsPositionSample) => {
       if (!activeRoundId) return;
       setLastSample(sample);
 
-      const fence = checkGreenhouseGeofence(sample, lockedGreenhouseId);
+      const fence = checkGreenhouseGeofence(
+        sample,
+        lockedGreenhouseId,
+        useGreenhouseAnchorStore.getState().anchors,
+      );
       setGeofenceOutside(fence ? !fence.inside && !fence.anchorMismatch : false);
       setGeofenceAnchorMismatch(fence?.anchorMismatch ?? false);
 
@@ -104,7 +126,7 @@ export function useScoutingRouteTracker(activeRoundId: string | null) {
       const reason = useScoutingRouteBufferStore.getState().lastRejectReason;
       setGpsStabilityHint(rejectHint(reason, sample.accuracyM));
 
-      if (added && !hasSupabaseEnv()) {
+      if (added && isOfflineDemo()) {
         addDemoRoutePoint({
           roundId: activeRoundId,
           latitude: sample.latitude,
@@ -123,7 +145,7 @@ export function useScoutingRouteTracker(activeRoundId: string | null) {
 
       // Throttle live map position upserts — don't spam on every noisy fix
       const now = Date.now();
-      if (hasSupabaseEnv() && (added || now - lastPublishRef.current > 20_000)) {
+      if (hasConfiguredBackend() && (added || now - lastPublishRef.current > 20_000)) {
         lastPublishRef.current = now;
         void getCurrentUser().then((user) => {
           if (user) {
@@ -153,27 +175,29 @@ export function useScoutingRouteTracker(activeRoundId: string | null) {
       return;
     }
 
-    startedAtRef.current = new Date().toISOString();
+    startedAtRef.current = startedAt ?? new Date().toISOString();
     const points = getPointsForRound(activeRoundId);
-    if (points[0]) startedAtRef.current = points[0].recordedAt;
+    if (!startedAt && points[0]) startedAtRef.current = points[0].recordedAt;
 
-    const stopWatch = watchScoutingPosition(onSample, { pollMs: 8000 });
+    const stopWatch = watchScoutingPosition(onSample, { pollMs: 5000 });
     const tick = window.setInterval(() => {
       if (startedAtRef.current) {
         setLiveElapsedS(durationSeconds(startedAtRef.current));
       }
     }, 1000);
-    const flushTimer = window.setInterval(() => void flush(), FLUSH_MS);
+    const flushTimer = window.setInterval(() => {
+      void flush().catch(() => undefined);
+    }, FLUSH_MS);
 
-    void flush();
+    void flush().catch(() => undefined);
 
     return () => {
       stopWatch();
       window.clearInterval(tick);
       window.clearInterval(flushTimer);
-      void flush();
+      void flush().catch(() => undefined);
     };
-  }, [activeRoundId, onSample, flush, getPointsForRound]);
+  }, [activeRoundId, startedAt, onSample, flush, getPointsForRound]);
 
   const livePath = activeRoundId
     ? getPointsForRound(activeRoundId).map((p) => ({

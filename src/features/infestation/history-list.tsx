@@ -84,20 +84,28 @@ function mapSprayToHistory(row: {
   notes: string | null;
   created_at: string;
   greenhouse_id: string | null;
+  severity_before?: number | null;
+  severity_after?: number | null;
   farms?: { name?: string } | null;
   greenhouses?: { name?: string } | null;
   users?: { full_name?: string } | null;
 }): HistoryItem {
+  const evaluate =
+    row.severity_before != null && row.severity_after != null
+      ? `Evaluate ${row.severity_before}→${row.severity_after}/5`
+      : null;
+  const detailParts = [evaluate, row.notes].filter(Boolean);
   return {
     id: row.id,
     type: "spray",
     title: row.product_name,
-    detail: row.notes ?? "Spray treatment",
+    detail: detailParts.length ? detailParts.join(" · ") : "Spray treatment",
     farm: row.farms?.name ?? "—",
     greenhouse: row.greenhouses?.name ?? "—",
     greenhouse_id: row.greenhouse_id ?? "",
     worker: row.users?.full_name ?? "—",
     created_at: row.created_at,
+    severity: row.severity_after ?? row.severity_before ?? undefined,
   };
 }
 

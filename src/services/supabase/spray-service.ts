@@ -1,4 +1,6 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
+import * as mssql from "@/services/mssql/ops-actions";
 
 export type LogSprayInput = {
   worker_id: string;
@@ -10,14 +12,24 @@ export type LogSprayInput = {
   product_name: string;
   notes?: string | null;
   image_url?: string | null;
+  severity_before?: number | null;
+  severity_after?: number | null;
 };
 
 export async function logSpray(input: LogSprayInput) {
+  if (routeDataThroughMssql()) return mssql.mssqlLogSprayAction(input);
   const supabase = createClient();
   return supabase.from("spray_treatments").insert(input).select().single();
 }
 
 export async function listSpraysForHotspot(hotspotId: string) {
+  if (routeDataThroughMssql()) {
+    const all = await mssql.mssqlListSpraysAction(500);
+    return {
+      data: (all.data ?? []).filter((s) => String(s.hotspot_id) === hotspotId),
+      error: all.error,
+    };
+  }
   const supabase = createClient();
   return supabase
     .from("spray_treatments")
@@ -27,6 +39,7 @@ export async function listSpraysForHotspot(hotspotId: string) {
 }
 
 export async function listSprays(limit = 200) {
+  if (routeDataThroughMssql()) return mssql.mssqlListSpraysAction(limit);
   const supabase = createClient();
   return supabase
     .from("spray_treatments")
@@ -42,6 +55,18 @@ export async function listSpraysForHistory(options?: {
   since?: Date;
   limit?: number;
 }) {
+  if (routeDataThroughMssql()) {
+    const { data, error } = await mssql.mssqlListSpraysAction(options?.limit ?? 500);
+    let rows = data ?? [];
+    if (options?.since) {
+      const t = options.since.getTime();
+      rows = rows.filter((r) => new Date(r.created_at as string).getTime() >= t);
+    }
+    if (options?.greenhouseId) {
+      rows = rows.filter((r) => String(r.greenhouse_id) === options.greenhouseId);
+    }
+    return { data: rows, error };
+  }
   const supabase = createClient();
   let query = supabase
     .from("spray_treatments")
@@ -61,6 +86,10 @@ export async function listSpraysForHistory(options?: {
 }
 
 export async function getSpraysTodayCount() {
+  if (routeDataThroughMssql()) {
+    const res = await mssql.mssqlGetSpraysTodayCountAction();
+    return { count: res.data?.count ?? 0, error: res.error };
+  }
   const supabase = createClient();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -71,6 +100,15 @@ export async function getSpraysTodayCount() {
 }
 
 export async function listSpraysForWorker(workerId: string, limit = 10) {
+  if (routeDataThroughMssql()) {
+    const { data, error } = await mssql.mssqlListSpraysAction(limit * 5);
+    return {
+      data: (data ?? [])
+        .filter((s) => String(s.worker_id) === workerId)
+        .slice(0, limit),
+      error,
+    };
+  }
   const supabase = createClient();
   return supabase
     .from("spray_treatments")

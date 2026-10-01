@@ -2,7 +2,7 @@ import { AppShell, type NavItem } from "@/components/app-shell";
 import { requireRole } from "@/lib/auth/require-role";
 
 const workerNav: NavItem[] = [
-  { href: "/worker/dashboard", label: "Home", icon: "dashboard" },
+  { href: "/worker/dashboard", label: "Home", icon: "home" },
   { href: "/worker/field", label: "Field work", icon: "scan" },
 ];
 

@@ -8,7 +8,7 @@ Regenerate: `python scripts/generate-demo-script-pdf.py`
 
 | Topic | Where to show |
 |--------|----------------|
-| How scouts enter data | Worker → **Field work** → Scout stop / infestation / spray |
+| How scouts enter data | Worker → **Field work** → Start Scouting → Add observation |
 | How GPS captures data | **Live GPS tracking** card (coords + nearest greenhouse) |
 | GPS → farm & greenhouse | **Current assignment** banner (e.g. Bemack / BEGH 16) |
 | Data on manager side | **Scouting**, **Map**, **Dashboard** (stops today KPI) |
@@ -17,7 +17,7 @@ Regenerate: `python scripts/generate-demo-script-pdf.py`
 
 ### Before the meeting
 
-1. Run migrations `006`–`012` and `link-auth-users.sql` in Supabase SQL Editor.
+1. Run every migration in `supabase/migrations/` (`001`–`023`) and `link-auth-users.sql` in Supabase SQL Editor.
 2. Demo accounts: `worker@vegpro.com`, `manager@vegpro.com`, `admin@vegpro.com` (see migration `014_demo_manager_account.sql` for manager password).
 3. Paste Auth UUIDs into `link-auth-users.sql` if IDs differ from the template.
 4. Run `012_sample_bemack_demo.sql` for seed scouting + map data.
@@ -29,9 +29,9 @@ Regenerate: `python scripts/generate-demo-script-pdf.py`
 
 1. Login `worker@vegpro.com` → **Field work**.
 2. Allow location **or** pick greenhouse under **Override greenhouse**.
-3. **Start round** (Scout route bar).
-4. **Scout stop (Bemack)** — category, variety, column/bay, pest/disease, optional parameters → **Save**.
-5. Optional: **Quick infestation report** or **Log spray** (same GPS assignment).
+3. **Start Scouting** (Smart Scouting Tracker).
+4. **Add observation** — tap a heat-map cell, then category, variety, pest/disease or None found → **Save**.
+5. Optional: **Quick infestation report** (manager logs spray from the spray page).
 
 **Manager (main screen)**
 
@@ -48,7 +48,7 @@ Cookie login as worker → same Field work flow. Data persists in browser storag
 ## GPS notes for presenters
 
 - Browser “location allowed” ≠ always a fix on Windows desktop — enable **Windows Location Services** or use **Override greenhouse**.
-- Coordinates map to the **nearest Bemack greenhouse anchor** (17 GHs, Kenya region).
+- Coordinates map to the **nearest Star greenhouse anchor** (67 GHs on the Star farm layout).
 - Each scouting stop stores **latitude/longitude** for the route map.
 
 ## Accounts

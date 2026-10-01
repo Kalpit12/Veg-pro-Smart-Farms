@@ -5,7 +5,8 @@ Production-ready MVP for realtime farm infestation monitoring, GPS hotspots, and
 ## Tech Stack
 
 - Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui
-- Supabase (Auth, Postgres, Realtime, Storage, RLS)
+- **Production (VegPro FDB):** Microsoft SQL Server + Next.js (see `docs/DEPLOY-FDB.md`)
+- **Optional dev:** Supabase (Auth, Postgres, Realtime, Storage)
 - Zustand, React Hook Form, Zod, Recharts, Framer Motion
 - PWA via `next-pwa`
 
@@ -18,7 +19,7 @@ Production-ready MVP for realtime farm infestation monitoring, GPS hotspots, and
 ## Supabase Setup
 
 1. Create a Supabase project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run migrations in order: `001` → `002` → `003` → `004` → `005` → `006_scouting_bemack` → `007_seed_bemack` → `008_scouting_realtime` → `009_scouting_phase2` → `010_scouting_rounds_realtime` → `011_remove_legacy_seed` → `014_demo_manager_account` → optional `012_sample_bemack_demo` (demo seed data).
+2. In **SQL Editor**, run every file in `supabase/migrations/` in numeric order (`001` through `023`), then `supabase/link-auth-users.sql`.
 3. See **[docs/DEMO-DAY.md](docs/DEMO-DAY.md)** for the live VegPro demo script (scout entry, GPS, manager views).
 4. **Authentication → Users**: demo accounts (or run migration `014_demo_manager_account.sql`):
    - `admin@vegpro.com` — Admin
@@ -31,12 +32,17 @@ Production-ready MVP for realtime farm infestation monitoring, GPS hotspots, and
 
 ## Deployment
 
+### VegPro FDB (production)
+- **[docs/SETUP-DEPLOY-OFFICE.md](docs/SETUP-DEPLOY-OFFICE.md)** — on-site setup and deploy checklist (PDF: `docs/SETUP-DEPLOY-OFFICE.pdf`).
+- **[docs/DEPLOY-FDB.md](docs/DEPLOY-FDB.md)** — short IT handover (PDF: `docs/DEPLOY-FDB.pdf`).
+- **100% MS SQL** on FDB — no Supabase in production.
+
 ### Vercel Frontend
 - Import repository and add environment variables.
 - Deploy from main branch.
 
 ### Supabase Backend
-- Apply migration and seed scripts.
+- Apply migration scripts (`001`–`023`) and `link-auth-users.sql`.
 - Validate RLS and storage access.
 
 ## Phase 2 (Future Scope)

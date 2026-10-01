@@ -23,7 +23,9 @@ export function GreenhouseCheckInPanel() {
   const { toast } = useToast();
   const [manualGh, setManualGh] = useState("");
 
-  const checkedIn = Boolean(scan.farmId && scan.greenhouseId && scan.qrValue);
+  const checkedIn = Boolean(
+    scan.farmId && scan.greenhouseId && (scan.assignmentLocked || scan.qrValue),
+  );
 
   const checkIn = (greenhouseName: string, qrValue?: string) => {
     const loc = BEMACK_DEMO_LOCATIONS.find((l) => l.greenhouseName === greenhouseName);
@@ -44,11 +46,11 @@ export function GreenhouseCheckInPanel() {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card/80 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <QrCode className="size-4 text-primary" />
-          <div>
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card/80 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <QrCode className="mt-0.5 size-4 shrink-0 text-primary" />
+          <div className="min-w-0">
             <p className="text-sm font-semibold">Greenhouse check-in</p>
             <p className="text-xs text-muted-foreground">
               Scan entrance QR/NFC or confirm the house before starting a route.
@@ -56,34 +58,38 @@ export function GreenhouseCheckInPanel() {
           </div>
         </div>
         {checkedIn ? (
-          <Badge variant="success" className="gap-1">
+          <Badge variant="success" className="shrink-0 gap-1">
             <CheckCircle2 className="size-3" />
             Checked in
           </Badge>
         ) : (
-          <Badge variant="outline">Not verified</Badge>
+          <Badge variant="outline" className="shrink-0">
+            Not verified
+          </Badge>
         )}
       </div>
 
       {scan.greenhouseName ? (
-        <p className="mt-3 text-sm">
+        <p className="mt-3 break-words text-sm">
           Current: <span className="font-medium">{scan.farmName}</span> /{" "}
           <span className="font-medium">{scan.greenhouseName}</span>
           {scan.qrValue ? (
-            <span className="ml-2 text-xs text-muted-foreground">QR {scan.qrValue}</span>
+            <span className="mt-1 block text-xs text-muted-foreground sm:mt-0 sm:ml-2 sm:inline">
+              QR {scan.qrValue}
+            </span>
           ) : null}
         </p>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex min-w-0 flex-col gap-2">
         <Link
           href="/worker/scan"
-          className="inline-flex h-7 items-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
+          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
         >
           Open QR scanner
         </Link>
         <select
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          className="h-9 w-full min-w-0 max-w-full rounded-lg border border-border bg-background px-3 text-sm"
           data-testid="check-in-greenhouse"
           value={manualGh}
           onChange={(e) => setManualGh(e.target.value)}
@@ -98,6 +104,7 @@ export function GreenhouseCheckInPanel() {
         <Button
           type="button"
           size="sm"
+          className="w-full"
           disabled={!manualGh}
           onClick={() => checkIn(manualGh)}
         >

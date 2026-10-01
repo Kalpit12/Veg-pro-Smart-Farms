@@ -20,6 +20,8 @@ export type DemoSprayRow = {
   longitude: number;
   product_name: string;
   notes: string | null;
+  severity_before?: number | null;
+  severity_after?: number | null;
   created_at: string;
   users?: { full_name?: string } | null;
   farms?: { name?: string } | null;
@@ -69,6 +71,8 @@ type FieldOpsStore = {
     notes?: string;
     hotspot_id?: string | null;
     workerName?: string;
+    severity_before?: number | null;
+    severity_after?: number | null;
   }) => void;
   addDemoAlert: (type: string, message: string) => void;
   updateDemoHotspotStatus: (id: string, status: InfestationStatus) => void;
@@ -116,7 +120,16 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
         set((s) => ({
           demoHotspots: input.hotspot_id
             ? s.demoHotspots.map((h) =>
-                h.id === input.hotspot_id ? { ...h, status: "sprayed" as const } : h,
+                h.id === input.hotspot_id
+                  ? {
+                      ...h,
+                      status: "sprayed" as const,
+                      severity:
+                        input.severity_after != null
+                          ? input.severity_after
+                          : h.severity,
+                    }
+                  : h,
               )
             : s.demoHotspots,
           demoSprays: [
@@ -130,6 +143,8 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
               longitude: input.longitude,
               product_name: input.product_name,
               notes: input.notes ?? null,
+              severity_before: input.severity_before ?? null,
+              severity_after: input.severity_after ?? null,
               created_at: new Date().toISOString(),
               users: { full_name: input.workerName ?? "Field worker" },
               farms: { name: input.farmName },

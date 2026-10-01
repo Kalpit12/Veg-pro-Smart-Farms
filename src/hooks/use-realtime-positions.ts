@@ -1,5 +1,7 @@
 "use client";
 
+import { hasMssqlEnv } from "@/lib/data-backend";
+import { useMssqlPoll } from "@/hooks/use-mssql-poll";
 import { useRealtimePostgres } from "@/hooks/use-realtime-postgres";
 
 const POSITIONS_TABLES = [
@@ -8,5 +10,6 @@ const POSITIONS_TABLES = [
 ];
 
 export function useRealtimePositions(onChange: () => void) {
-  useRealtimePostgres("positions", POSITIONS_TABLES, onChange);
+  useRealtimePostgres("positions", POSITIONS_TABLES, onChange, { disabled: hasMssqlEnv() });
+  useMssqlPoll(onChange);
 }

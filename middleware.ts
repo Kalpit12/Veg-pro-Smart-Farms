@@ -2,10 +2,40 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { PUBLIC_ROUTES, ROLE_ALLOWED_PREFIXES, ROLE_ROUTES } from "@/lib/constants";
 import type { Role } from "@/types/db";
-import { getSupabaseAnonKey, hasSupabaseEnv } from "@/lib/supabase/config";
+import { getServerDataBackend } from "@/lib/data-backend";
+import { getSessionFromRequest } from "@/lib/auth/session";
+import { getSupabaseAnonKey } from "@/lib/supabase/config";
 
 export async function middleware(request: NextRequest) {
-  if (!hasSupabaseEnv()) {
+  const backend = getServerDataBackend();
+
+  if (backend === "mssql") {
+    const pathname = request.nextUrl.pathname;
+    const session = await getSessionFromRequest(request);
+
+    if (PUBLIC_ROUTES.includes(pathname)) {
+      return NextResponse.next({ request });
+    }
+
+    if (!session) {
+      return NextResponse.redirect(new URL("/auth/login", request.url));
+    }
+
+    const role = session.role;
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL(ROLE_ROUTES[role], request.url));
+    }
+
+    const allowed = ROLE_ALLOWED_PREFIXES[role] ?? ROLE_ALLOWED_PREFIXES.worker;
+    const isAllowed = allowed.some((prefix) => pathname.startsWith(prefix));
+    if (!isAllowed) {
+      return NextResponse.redirect(new URL(ROLE_ROUTES[role], request.url));
+    }
+
+    return NextResponse.next({ request });
+  }
+
+  if (backend === "demo") {
     const pathname = request.nextUrl.pathname;
     const demoAuth = request.cookies.get("demo_auth")?.value === "1";
     const demoRole = (request.cookies.get("demo_role")?.value ?? "worker") as Role;

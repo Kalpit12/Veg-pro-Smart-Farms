@@ -72,6 +72,7 @@ export function QrScanner() {
                       greenhouseId: loc.greenhouseId,
                       farmName: loc.farmName,
                       greenhouseName: loc.greenhouseName,
+                      assignmentLocked: true,
                     });
                     toast({
                       title: "Star location set",
@@ -129,6 +130,7 @@ export function QrScanner() {
                 greenhouseId: resolved.greenhouseId,
                 farmName: resolved.farmName,
                 greenhouseName: resolved.greenhouseName,
+                assignmentLocked: true,
               });
               toast({
                 title: "Demo context resolved",
@@ -152,6 +154,7 @@ export function QrScanner() {
               greenhouseId: resolved.greenhouse_id,
               farmName: resolved.farm_name,
               greenhouseName: resolved.greenhouse_name,
+              assignmentLocked: true,
             });
             toast({
               title: "Context resolved",

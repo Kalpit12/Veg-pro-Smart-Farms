@@ -139,6 +139,8 @@ export type SprayExportRow = {
   created_at: string;
   latitude: number;
   longitude: number;
+  severity_before?: number | null;
+  severity_after?: number | null;
   users?: { full_name?: string } | null;
 };
 
@@ -147,6 +149,8 @@ export function spraysToExcel(rows: SprayExportRow[]): ExcelRow[] {
     Date: format(new Date(row.created_at), "yyyy-MM-dd HH:mm"),
     Worker: row.users?.full_name ?? "",
     Product: row.product_name,
+    "Severity before": row.severity_before ?? "",
+    "Severity after": row.severity_after ?? "",
     Latitude: row.latitude,
     Longitude: row.longitude,
   }));

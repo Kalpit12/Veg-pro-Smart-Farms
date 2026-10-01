@@ -3,7 +3,7 @@ import type { Role } from "@/types/db";
 export const ROLE_ROUTES: Record<Role, string> = {
   admin: "/admin/dashboard",
   supervisor: "/manager/dashboard",
-  worker: "/worker/dashboard",
+  worker: "/worker/field",
 };
 
 export const PUBLIC_ROUTES = [

@@ -10,6 +10,7 @@ import {
   columnCountForBay,
   formatStarGreenhouseLabel,
   greenhouseCellExists,
+  issueShortCode,
   maxColumnsForGreenhouse,
 } from "@/lib/bemack-master-data";
 import { buildGreenhouseGrid, scoreColor, type ScoutingGridInput } from "@/lib/greenhouse-grid";
@@ -22,17 +23,23 @@ import type { ScoutCellLocation } from "@/lib/scout-observation-flow";
 type GreenhouseHeatGridProps = {
   greenhouseName?: string;
   lockGreenhouse?: boolean;
+  /** When set, only observations from this scouting round appear on the grid. */
+  roundId?: string | null;
   interactive?: boolean;
   selectedCell?: ScoutCellLocation | null;
   onCellSelect?: (cell: ScoutCellLocation) => void;
+  /** Hide section title chrome when embedded in a report. */
+  compact?: boolean;
 };
 
 export function GreenhouseHeatGrid({
   greenhouseName,
   lockGreenhouse = false,
+  roundId = null,
   interactive = false,
   selectedCell = null,
   onCellSelect,
+  compact = false,
 }: GreenhouseHeatGridProps) {
   const { records, loading } = useScoutingData(14);
   const resolutionHotspots = useHotspotResolutionRefs();
@@ -43,7 +50,10 @@ export function GreenhouseHeatGrid({
   }, [greenhouseName]);
 
   const grid = useMemo(() => {
-    const activeRecords = filterUnresolvedScoutingRecords(records, resolutionHotspots);
+    const scoped = roundId
+      ? records.filter((r) => r.roundId === roundId)
+      : records;
+    const activeRecords = filterUnresolvedScoutingRecords(scoped, resolutionHotspots);
     const input: ScoutingGridInput[] = activeRecords.map((r) => ({
       greenhouseName: r.greenhouseName,
       columnNo: r.columnNo,
@@ -53,7 +63,7 @@ export function GreenhouseHeatGrid({
       rating: r.rating,
     }));
     return buildGreenhouseGrid(input, greenhouse);
-  }, [records, greenhouse, resolutionHotspots]);
+  }, [records, greenhouse, resolutionHotspots, roundId]);
 
   const { columns, bayRows, cellLookup } = useMemo(() => {
     const bayMax = bayMaxForGreenhouse(greenhouse);
@@ -70,15 +80,26 @@ export function GreenhouseHeatGrid({
   }
 
   return (
-    <section className="glass-card space-y-4 rounded-2xl p-4" data-testid="greenhouse-heat-map">
+    <section
+      className={compact ? "space-y-4" : "glass-card space-y-4 rounded-2xl p-4"}
+      data-testid="greenhouse-heat-map"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Greenhouse heat map</h2>
-          <p className="text-sm text-muted-foreground">
-            {interactive
-              ? `Tap a box to choose column × bay. Layout is ${bayMaxForGreenhouse(greenhouse)} bays × up to ${maxColumnsForGreenhouse(greenhouse)} columns.`
-              : `Bays and columns match Star mapping (${bayMaxForGreenhouse(greenhouse)} bays, up to ${maxColumnsForGreenhouse(greenhouse)} columns for ${greenhouse}). Red = higher issue rating. Resolved hotspots are hidden.`}
-          </p>
+          {!compact ? (
+            <>
+              <h2 className="text-lg font-semibold">Greenhouse heat map</h2>
+              <p className="text-sm text-muted-foreground">
+                {interactive
+                  ? `Tap a box to choose column × bay. Layout is ${bayMaxForGreenhouse(greenhouse)} bays × up to ${maxColumnsForGreenhouse(greenhouse)} columns.`
+                  : `Bays and columns match Star mapping (${bayMaxForGreenhouse(greenhouse)} bays, up to ${maxColumnsForGreenhouse(greenhouse)} columns for ${greenhouse}). Red = higher issue rating. Resolved hotspots are hidden.`}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Observations from this round on the bay × column grid.
+            </p>
+          )}
         </div>
         {lockGreenhouse ? (
           <p className="text-sm font-medium">{formatStarGreenhouseLabel(greenhouse)}</p>
@@ -138,31 +159,45 @@ export function GreenhouseHeatGrid({
                     : cell
                       ? scoreColor(cell.score)
                       : "bg-muted/25";
+                  const shortCode = cell?.topIssue ? issueShortCode(cell.topIssue) : "";
                   const title = !inLayout
                     ? `No column ${col} in bay ${bay}`
                     : cell
-                      ? `${cell.topIssue} · ${Math.round(cell.score / 20)}/5`
+                      ? `${cell.topIssue}${shortCode ? ` (${shortCode})` : ""} · ${Math.round(cell.score / 20)}/5`
                       : `Col ${col} · Bay ${bay} (${columnCountForBay(greenhouse, bay)} cols)`;
+                  const codeTextClass =
+                    cell && cell.score >= 80
+                      ? "text-white"
+                      : cell && cell.score >= 50
+                        ? "text-amber-950"
+                        : "text-emerald-950";
                   const boxClass = cn(
-                    "size-6 rounded-sm border border-background/50",
+                    "flex items-center justify-center rounded-sm border border-background/50 p-0.5 text-center font-bold leading-none",
+                    shortCode ? "size-8 min-w-8 text-[8px] sm:text-[9px]" : "size-6",
                     colorClass,
+                    shortCode && codeTextClass,
                     isSelected && "ring-2 ring-primary ring-offset-1",
                     interactive && inLayout && "cursor-pointer hover:ring-2 hover:ring-primary/70",
                   );
+                  const cellLabel = shortCode || undefined;
                   return (
                     <td key={`${col}-${bay}`} className="p-0.5">
                       {interactive && inLayout ? (
                         <button
                           type="button"
                           title={title}
-                          aria-label={`Column ${col}, bay ${bay}`}
+                          aria-label={`Column ${col}, bay ${bay}${shortCode ? `, ${cell?.topIssue} ${shortCode}` : ""}`}
                           aria-pressed={isSelected}
                           data-testid={`heat-cell-${col}-${bay}`}
                           onClick={() => onCellSelect?.({ column: col, bay })}
                           className={boxClass}
-                        />
+                        >
+                          {cellLabel}
+                        </button>
                       ) : (
-                        <div title={title} className={boxClass} />
+                        <div title={title} className={boxClass} aria-hidden={!cellLabel}>
+                          {cellLabel}
+                        </div>
                       )}
                     </td>
                   );
@@ -184,7 +219,13 @@ export function GreenhouseHeatGrid({
                 className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm"
               >
                 <span>
-                  Col {c.column} · Bay {c.bay} — {c.topIssue}
+                  Col {c.column} · Bay {c.bay} —{" "}
+                  {c.topIssue}
+                  {issueShortCode(c.topIssue) ? (
+                    <span className="ml-1 font-semibold text-muted-foreground">
+                      ({issueShortCode(c.topIssue)})
+                    </span>
+                  ) : null}
                 </span>
                 <Badge variant={c.score >= 80 ? "danger" : c.score >= 50 ? "warning" : "outline"}>
                   {Math.round(c.score / 20)}/5

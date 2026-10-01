@@ -24,7 +24,7 @@ import {
 import { VegProChartTooltip } from "@/features/dashboard/components/vegpro-chart-tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoHotspots } from "@/lib/demo-field-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend } from "@/lib/data-backend";
 import {
   getAdminDailyAnalytics,
   type AdminDailyAnalytics,
@@ -98,7 +98,7 @@ export function AdminDailyAnalytics({
   const [data, setData] = useState<AdminDailyAnalytics>(demoAnalytics);
 
   const load = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (!hasConfiguredBackend()) {
       setData(demoAnalytics());
       setLoading(false);
       return;

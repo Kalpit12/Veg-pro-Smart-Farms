@@ -15,7 +15,7 @@ import {
 import { buildCoverageModel } from "@/lib/scouting-coverage";
 import { formatDistance, formatDuration } from "@/lib/route-metrics";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
-import { useScoutingData } from "@/hooks/use-scouting-data";
+import { useScoutingData, useScoutingRounds } from "@/hooks/use-scouting-data";
 import { useScoutingStore } from "@/store/scouting-store";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,7 @@ type GridMode = "issues" | "coverage";
 
 export function ScoutingCoveragePanel() {
   const { records } = useScoutingData(14);
+  const { rounds } = useScoutingRounds(80);
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const demoRoutePoints = useScoutingStore((s) => s.demoRoutePoints);
   const [greenhouse, setGreenhouse] = useState("STGH01A");
@@ -71,7 +72,19 @@ export function ScoutingCoveragePanel() {
         .sort((a, b) => b - a)[0];
       const daysAgo = last != null ? Math.floor((Date.now() - last) / 86_400_000) : null;
 
-      const round = demoRounds
+      const recordCoverage = buildCoverageModel({
+        greenhouseName: gh,
+        stops: ghRecords.map((r) => ({
+          columnNo: r.columnNo,
+          bayNo: r.bayNo,
+          latitude: r.latitude,
+          longitude: r.longitude,
+        })),
+        routePoints: [],
+        ...coverageGridForGreenhouse(gh),
+      }).coveragePct;
+
+      const latestRound = rounds
         .filter((r) => r.greenhouseName === gh && r.status === "completed")
         .sort(
           (a, b) =>
@@ -79,7 +92,7 @@ export function ScoutingCoveragePanel() {
             new Date(a.endedAt ?? a.startedAt).getTime(),
         )[0];
 
-      const coveragePct = round?.coveragePct ?? null;
+      const coveragePct = latestRound?.coveragePct ?? (ghRecords.length ? recordCoverage : null);
       const stale = daysAgo == null || daysAgo >= 3;
       const lowCoverage = coveragePct != null && coveragePct < 50;
 
@@ -93,18 +106,31 @@ export function ScoutingCoveragePanel() {
       }
     }
     return alerts.slice(0, 8);
-  }, [records, demoRounds]);
+  }, [records, rounds]);
 
   const dailyHistory = useMemo(() => {
     const since = subDays(new Date(), 7);
-    const rounds = demoRounds
-      .filter((r) => isAfter(new Date(r.startedAt), since))
-      .sort(
-        (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-      );
 
     if (hasSupabaseEnv()) {
-      // Group recent records by day + scout as a lightweight history when rounds lack metrics
+      const recentRounds = rounds
+        .filter((r) => isAfter(new Date(r.startedAt), since))
+        .sort(
+          (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+        )
+        .slice(0, 12);
+      if (recentRounds.length) {
+        return recentRounds.map((r) => ({
+          id: r.id,
+          label: format(new Date(r.startedAt), "EEEE"),
+          scout: r.scoutName,
+          greenhouse: r.greenhouseName,
+          distanceLabel: formatDistance(r.distanceM ?? 0),
+          durationLabel: formatDuration(r.durationS),
+          observations: r.stopCount,
+          coverageLabel: r.coveragePct != null ? `${r.coveragePct}%` : "—",
+        }));
+      }
+
       const byDay = new Map<
         string,
         { scout: string; greenhouse: string; observations: number; date: string }
@@ -137,7 +163,13 @@ export function ScoutingCoveragePanel() {
         }));
     }
 
-    return rounds.map((r) => {
+    const demoHistory = demoRounds
+      .filter((r) => isAfter(new Date(r.startedAt), since))
+      .sort(
+        (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+      );
+
+    return demoHistory.map((r) => {
       const obs = useScoutingStore
         .getState()
         .demoRecords.filter((rec) => rec.roundId === r.id).length;
@@ -160,7 +192,7 @@ export function ScoutingCoveragePanel() {
         coverageLabel: r.coveragePct != null ? `${r.coveragePct}%` : "—",
       };
     });
-  }, [demoRounds, records]);
+  }, [demoRounds, records, rounds]);
 
   const { columns, bayRows } = useMemo(() => {
     const cols = Array.from({ length: coverage.maxColumn }, (_, i) => i + 1);

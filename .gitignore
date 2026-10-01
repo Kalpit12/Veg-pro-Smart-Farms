@@ -24,6 +24,9 @@
 # production
 /build
 
+# Uploaded evidence (MS SQL production)
+/data/evidence/
+
 # misc
 .DS_Store
 *.pem

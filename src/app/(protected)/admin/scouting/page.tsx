@@ -4,6 +4,7 @@ import { GreenhouseHeatGrid } from "@/features/scouting/greenhouse-heat-grid";
 import { ScoutRouteMap } from "@/features/scouting/scout-route-map";
 import { ScoutingCoveragePanel } from "@/features/scouting/scouting-coverage-panel";
 import { ScoutingKpiDashboard } from "@/features/scouting/scouting-kpi-dashboard";
+import { ScoutingLiveAuditPanel } from "@/features/scouting/scouting-live-audit-panel";
 import { ScoutingPressurePanel } from "@/features/scouting/scouting-pressure-panel";
 import { ScoutingRecordsTable } from "@/features/scouting/scouting-records-table";
 import { SprayWorkProgramPanel } from "@/features/scouting/spray-work-program-panel";
@@ -20,6 +21,8 @@ export default function AdminScoutingPage() {
       </header>
 
       <ScoutingKpiDashboard />
+
+      <ScoutingLiveAuditPanel />
 
       <SprayWorkProgramPanel basePath="/admin" />
 

@@ -1,4 +1,10 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
+import {
+  mssqlGetAdminDailyAnalyticsRawAction,
+  mssqlGetDashboardKpisAction,
+  mssqlGetWeeklyTrendsRawAction,
+} from "@/services/mssql/ops-actions";
 import { getHotspotKpis } from "@/services/supabase/infestation-service";
 import { getSpraysTodayCount } from "@/services/supabase/spray-service";
 import { getWorkersInFieldCount } from "@/services/supabase/position-service";
@@ -10,6 +16,11 @@ function startOfTodayIso() {
 }
 
 export async function getDashboardKpis() {
+  if (routeDataThroughMssql()) {
+    const res = await mssqlGetDashboardKpisAction();
+    if (res.error) throw new Error(res.error.message);
+    return res.data!;
+  }
   const supabase = createClient();
 
   const farms = await supabase.from("farms").select("id", { count: "exact", head: true });
@@ -71,6 +82,16 @@ function buildTrendSeries(rows: { created_at: string }[], days = 7) {
 }
 
 export async function getWeeklyInfestationTrends() {
+  if (routeDataThroughMssql()) {
+    const res = await mssqlGetWeeklyTrendsRawAction();
+    if (res.error) throw new Error(res.error.message);
+    const raw = res.data!;
+    return {
+      reports: buildTrendSeries(raw.reports.map((created_at) => ({ created_at }))),
+      sprays: buildTrendSeries(raw.sprays.map((created_at) => ({ created_at }))),
+      scouting: buildTrendSeries(raw.scouting.map((created_at) => ({ created_at }))),
+    };
+  }
   const supabase = createClient();
   const since = new Date();
   since.setDate(since.getDate() - 6);
@@ -132,6 +153,30 @@ function topWithOther(rows: NamedCount[], limit: number): NamedCount[] {
 }
 
 export async function getAdminDailyAnalytics(): Promise<AdminDailyAnalytics> {
+  if (routeDataThroughMssql()) {
+    const res = await mssqlGetAdminDailyAnalyticsRawAction();
+    if (res.error) throw new Error(res.error.message);
+    const { activeHotspots, scoutingStops } = res.data!;
+    const severityMix = [1, 2, 3, 4, 5].map((level) => ({
+      name: `${level}/5`,
+      value: activeHotspots.filter((row) => row.severity === level).length,
+    }));
+    const houseTally = tally(scoutingStops.map((row) => row.greenhouse_name));
+    return {
+      pestMix: topWithOther(
+        tally(activeHotspots.map((row) => row.pest_type || "Unspecified")),
+        6,
+      ),
+      severityMix,
+      issueTypeMix: tally(
+        scoutingStops.map((row) => (row.issue_type === "disease" ? "Disease" : "Pest")),
+      ),
+      scoutingByHouse: houseTally.slice(0, 10).map((row) => ({
+        greenhouse: row.name,
+        stops: row.value,
+      })),
+    };
+  }
   const supabase = createClient();
   const since = new Date();
   since.setDate(since.getDate() - 6);

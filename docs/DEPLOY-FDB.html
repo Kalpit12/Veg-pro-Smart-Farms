@@ -1,0 +1,34 @@
+<!DOCTYPE html><html><head><meta charset='utf-8'><style>
+@page { margin: 1.8cm; }
+body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #1a1a1a; max-width: 100%; }
+h1 { color: #166534; font-size: 20pt; border-bottom: 2px solid #166534; padding-bottom: 8px; page-break-after: avoid; }
+h2 { color: #14532d; font-size: 13pt; margin-top: 22px; page-break-after: avoid; }
+h3 { color: #15803d; font-size: 11pt; margin-top: 16px; page-break-after: avoid; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 9pt; page-break-inside: avoid; }
+th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+th { background: #f0fdf4; }
+hr { border: none; border-top: 1px solid #ddd; margin: 18px 0; }
+ul, ol { margin: 6px 0; padding-left: 22px; }
+li { margin: 3px 0; }
+pre { background: #f4f4f5; border: 1px solid #ddd; padding: 10px 12px; font-size: 8.5pt; line-height: 1.35; overflow-x: auto; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; }
+p code { background: #f4f4f5; padding: 1px 4px; }
+blockquote { margin: 10px 0; padding: 10px 14px; border-left: 4px solid #166534; background: #f0fdf4; font-style: italic; }
+p { margin: 8px 0; }
+strong { color: #14532d; }
+a { color: #166534; }
+</style></head><body><h1>VegPro scouting platform — setup on FDB</h1><p><strong>For:</strong> Imran (IT) and VegPro team  </p><p><strong>From:</strong> Kalpit Patel  </p><p>The production app uses <strong>only Microsoft SQL Server</strong> on FDB (<code>Scouting</code> database). <strong>No Supabase</strong> and <strong>no PostgreSQL</strong>.</p><hr><h2>Stack on FDB</h2><table><tr><th>Piece</th><th>Technology</th></tr><tr><td>Website</td><td>Next.js on <strong>IIS</strong> + <strong>HTTPS</strong> + Node.js</td></tr><tr><td>Database</td><td><strong>MS SQL</strong> — database <strong><code>Scouting</code></strong> on <code>192.168.16.14</code></td></tr><tr><td>Photos</td><td>Folder on FDB disk (<code>data/evidence</code> or <code>EVIDENCE_STORAGE_PATH</code>)</td></tr><tr><td>Logins</td><td>Email/password in <code>dbo.users</code></td></tr></table><hr><h2>Before you start</h2><ul><li>☐ SQL login with rights on <strong><code>Scouting</code></strong> (Imran provided)</li><li>☐ <strong>Node.js 20 LTS</strong> on FDB</li><li>☐ <strong>HTTPS</strong> for scouts’ phones (GPS requires TLS)</li><li>☐ VPN for Kalpit to run scripts during setup</li></ul><hr><h2>Step 1 — Database scripts (SSMS → <code>Scouting</code>)</h2><p>Run in order:</p><ol><li><code>sql/mssql/001_schema.sql</code></li><li><code>sql/mssql/002_seed_bemack_core.sql</code></li><li><code>sql/mssql/003_activities.sql</code> (if using activities / QR)</li></ol><p>Then from a dev PC on VPN:</p><pre><code class="powershell">npm run seed:mssql-users</code></pre><hr><h2>Step 2 — App configuration (<code>.env.local</code> on FDB)</h2><pre><code class="env">DATA_BACKEND=mssql
+NEXT_PUBLIC_DATA_BACKEND=mssql
+
+MSSQL_SERVER=192.168.16.14
+MSSQL_DATABASE=Scouting
+MSSQL_USER=
+MSSQL_PASSWORD=
+MSSQL_TRUST_SERVER_CERTIFICATE=true
+
+SESSION_SECRET=long-random-secret
+
+# Optional — photo storage on FDB disk
+# EVIDENCE_STORAGE_PATH=D:\Apps\vegpro-scouting\data\evidence</code></pre><p>Do <strong>not</strong> set Supabase URL/keys on VegPro production.</p><hr><h2>Step 3 — Deploy website</h2><pre><code class="powershell">npm ci
+npm run build
+npm run start</code></pre><p>Use <strong>IIS reverse proxy</strong> to port <code>3000</code> with HTTPS (see prior FDB IIS notes).</p><hr><h2>Step 4 — Smoke test</h2><table><tr><th>#</th><th>Test</th></tr><tr><td>1</td><td>Login <code>worker@vegpro.com</code> / <code>VegPro2026!</code></td></tr><tr><td>2</td><td>Start scouting walk, save a stop</td></tr><tr><td>3</td><td>Manager sees stop on <strong>Scouting</strong> dashboard</td></tr><tr><td>4</td><td>Report infestation + log spray</td></tr><tr><td>5</td><td>Admin creates a new worker account</td></tr></table><p>Full technical notes: <strong><a href="./MSSQL-MIGRATION.md">MSSQL-MIGRATION.md</a></strong>.</p></body></html>

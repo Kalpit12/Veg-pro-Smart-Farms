@@ -1,6 +1,13 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
+import * as mssql from "@/services/mssql/ops-actions";
 
 export async function getWorkerPosition(workerId: string) {
+  if (routeDataThroughMssql()) {
+    const { data } = await mssql.mssqlListWorkerPositionsAction();
+    const row = (data ?? []).find((p) => p.worker_id === workerId);
+    return { data: row ?? null, error: null };
+  }
   const supabase = createClient();
   return supabase
     .from("worker_positions")
@@ -14,6 +21,9 @@ export async function upsertWorkerPosition(
   latitude: number,
   longitude: number,
 ) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlUpsertWorkerPositionAction(workerId, latitude, longitude);
+  }
   const supabase = createClient();
   return supabase
     .from("worker_positions")
@@ -28,6 +38,7 @@ export async function upsertWorkerPosition(
 }
 
 export async function listWorkerPositions() {
+  if (routeDataThroughMssql()) return mssql.mssqlListWorkerPositionsAction();
   const supabase = createClient();
   return supabase
     .from("worker_positions")
@@ -37,6 +48,10 @@ export async function listWorkerPositions() {
 }
 
 export async function getWorkersInFieldCount() {
+  if (routeDataThroughMssql()) {
+    const res = await mssql.mssqlGetWorkersInFieldCountAction();
+    return { count: res.data?.count ?? 0, error: res.error };
+  }
   const supabase = createClient();
   const since = new Date(Date.now() - 1000 * 60 * 30).toISOString();
   return supabase

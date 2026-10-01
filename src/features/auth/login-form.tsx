@@ -14,9 +14,10 @@ import {
   type DemoLoginRole,
 } from "@/lib/login-remember";
 import {
+  getSessionAction,
   signInWithPasswordAction,
 } from "@/features/auth/sign-in-action";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, hasMssqlEnv, hasSupabaseEnv } from "@/lib/data-backend";
 import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/types/db";
 
@@ -50,6 +51,7 @@ function demoRoleToPortal(demoRole: DemoLoginRole): LoginPortal {
 
 export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
   const router = useRouter();
+  const passwordAuth = hasConfiguredBackend();
   const supabaseConfigured = hasSupabaseEnv();
 
   const [portal, setPortal] = useState<LoginPortal>(initialPortal ?? "worker");
@@ -74,7 +76,14 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
   }, [initialPortal]);
 
   useEffect(() => {
-    if (!supabaseConfigured || !prefsLoaded) return;
+    if (!passwordAuth || !prefsLoaded) return;
+
+    if (hasMssqlEnv()) {
+      void getSessionAction().then((session) => {
+        if (session) router.replace(ROLE_ROUTES[session.role]);
+      });
+      return;
+    }
 
     const supabase = createClient();
     void supabase.auth
@@ -94,7 +103,7 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
       .catch(() => {
         /* Browser may be blocked from calling Auth; password submit uses the server. */
       });
-  }, [supabaseConfigured, prefsLoaded, router]);
+  }, [passwordAuth, prefsLoaded, router]);
 
   const goToDashboard = (role: Role) => {
     router.push(ROLE_ROUTES[role]);
@@ -111,7 +120,7 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
     e.preventDefault();
     setMessage("");
 
-    if (!supabaseConfigured) {
+    if (!passwordAuth) {
       if (rememberMe) saveLoginPrefs(email, true, config.demoRole);
       setDemoCookies();
       goToDashboard(config.demoRole);
@@ -174,11 +183,11 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={!prefsLoaded || busy}
-              required={supabaseConfigured}
+              required={passwordAuth}
             />
           </label>
 
-          {supabaseConfigured ? (
+          {passwordAuth ? (
             <label className="block space-y-1.5">
               <span className="text-sm font-medium">Password</span>
               <div className="relative">
@@ -233,7 +242,7 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
           )}
         </Button>
 
-        {!supabaseConfigured ? (
+        {!passwordAuth ? (
           <p className="text-center text-xs text-muted-foreground">
             Demo mode — no password required
           </p>

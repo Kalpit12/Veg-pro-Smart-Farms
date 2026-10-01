@@ -3,6 +3,7 @@
 import { format } from "date-fns";
 
 import { ExportExcelButton } from "@/components/export-excel-button";
+import { PhotoEvidenceLink } from "@/features/evidence/photo-evidence-link";
 import { useScoutingData } from "@/hooks/use-scouting-data";
 import { excelFilename, scoutingRecordsToExcel } from "@/lib/admin-export-mappers";
 
@@ -24,6 +25,7 @@ export function ScoutingRecordsTable() {
     issueType: r.issueType,
     issue: r.issue,
     rating: r.rating,
+    imageUrl: r.imageUrl,
     gps:
       r.latitude != null && r.longitude != null
         ? `${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}`
@@ -46,7 +48,8 @@ export function ScoutingRecordsTable() {
           />
         </div>
         <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          No scouting stops yet. Workers save stops from Field work → Scout stop (Star).
+          No scouting stops yet. Workers save stops from Field work → Add
+          observation.
         </p>
       </div>
     );
@@ -62,7 +65,7 @@ export function ScoutingRecordsTable() {
         />
       </div>
       <div className="overflow-x-auto rounded-2xl border border-border">
-      <table className="w-full min-w-[1000px] text-left text-sm">
+      <table className="w-full min-w-[1080px] text-left text-sm">
         <thead className="bg-muted/50 text-xs text-muted-foreground">
           <tr>
             <th className="px-3 py-2">Date</th>
@@ -74,6 +77,7 @@ export function ScoutingRecordsTable() {
             <th className="px-3 py-2">Bed/Col/Bay</th>
             <th className="px-3 py-2">Issue</th>
             <th className="px-3 py-2">Rating</th>
+            <th className="px-3 py-2">Photo</th>
             <th className="px-3 py-2">GPS</th>
           </tr>
         </thead>
@@ -97,6 +101,9 @@ export function ScoutingRecordsTable() {
                 {r.issue}
               </td>
               <td className="px-3 py-2 tabular-nums">{r.rating ?? "—"}</td>
+              <td className="px-3 py-2">
+                {r.imageUrl ? <PhotoEvidenceLink path={r.imageUrl} /> : "—"}
+              </td>
               <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.gps}</td>
             </tr>
           ))}

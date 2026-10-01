@@ -24,9 +24,10 @@ import {
   type BemackCategory,
 } from "@/lib/bemack-master-data";
 import { resolveScoutCoords } from "@/lib/cell-gps";
+import { coordsSnappedToWalkPath } from "@/lib/scout-route-alignment";
 import { captureGps, formatGps } from "@/lib/gps";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, hasMssqlEnv, isOfflineDemo } from "@/lib/data-backend";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUser } from "@/services/supabase/auth-service";
 import {
@@ -35,15 +36,19 @@ import {
   listCropVarieties,
   listScoutingParameters,
 } from "@/services/supabase/scouting-service";
-import {
-  getActiveRound,
-  startScoutingRound,
-} from "@/services/supabase/scouting-round-service";
+import { uploadScoutingEvidence } from "@/services/supabase/storage-service";
 import type { ScoutCellLocation, ScoutObservationHandoff } from "@/lib/scout-observation-flow";
+import { SCOUT_NONE_FOUND } from "@/lib/scout-observation-flow";
+import { putEvidenceBlob } from "@/lib/offline-evidence-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
+import { useScoutingRouteBufferStore } from "@/store/scouting-route-buffer-store";
 import { useScanStore } from "@/store/scan-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
 import { useScoutingStore } from "@/store/scouting-store";
+import {
+  isScoutingWalkEngaged,
+  useScoutingSessionStore,
+} from "@/store/scouting-session-store";
 
 const schema = z.object({
   category: z.enum(BEMACK_CATEGORIES),
@@ -81,19 +86,23 @@ export function ScoutingStopForm({
   const [submitting, setSubmitting] = useState(false);
   const [gpsLabel, setGpsLabel] = useState("Captured on submit");
   const [params, setParams] = useState<ParamState>(defaultParams);
+  const [file, setFile] = useState<File | null>(null);
   const { toast } = useToast();
   const scan = useScanStore();
   const resumeHotspot = useResumeHotspotStore((s) => s.hotspot);
   const addDemo = useScoutingStore((s) => s.addDemoRecord);
   const enqueueScout = useFieldWriteQueueStore((s) => s.enqueueScout);
   const activeRoundId = useScoutingStore((s) => s.activeRoundId);
+  const session = useScoutingSessionStore((s) => s.session);
+  const walkEngaged = useScoutingSessionStore((s) => s.walkEngaged);
+  const incrementStopCount = useScoutingSessionStore((s) => s.incrementStopCount);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       category: "Cut Rose",
       variety: "",
-      beds: 11,
+      beds: 1,
       column_no: 1,
       bay_no: 1,
       issue_type: "pest",
@@ -116,10 +125,15 @@ export function ScoutingStopForm({
   const planted = starGreenhouseRow(scan.greenhouseName ?? "");
   const bayNo = form.watch("bay_no");
   const colMax = columnCountForBay(scan.greenhouseName, bayNo);
+  const roundReady = isScoutingWalkEngaged(
+    walkEngaged,
+    session,
+    activeRoundId,
+    hasConfiguredBackend(),
+  );
 
   useEffect(() => {
     if (!scan.greenhouseName) return;
-    form.setValue("beds", bayMax);
     const currentBay = form.getValues("bay_no");
     if (!currentBay || currentBay > bayMax) {
       form.setValue("bay_no", 1);
@@ -171,8 +185,26 @@ export function ScoutingStopForm({
     async (values) => {
         if (!location) {
           toast({
-            title: "GPS location required",
-            description: "Wait for live GPS or pick a greenhouse in Live GPS above.",
+            title: "Greenhouse required",
+            description: "Confirm your greenhouse in Where are you? above.",
+            tone: "error",
+          });
+          return;
+        }
+
+        const roundId = session?.roundId ?? (!hasConfiguredBackend() ? activeRoundId : null);
+        if (!roundId) {
+          toast({
+            title: "Start walking first",
+            description: "Tap Start walking so this log is saved on your walk.",
+            tone: "error",
+          });
+          return;
+        }
+        if (session && session.greenhouseId !== location.greenhouseId) {
+          toast({
+            title: "Wrong greenhouse",
+            description: `This walk is locked to ${session.greenhouseName}. Finish it before changing house.`,
             tone: "error",
           });
           return;
@@ -197,11 +229,18 @@ export function ScoutingStopForm({
 
         setSubmitting(true);
         try {
+          const capturedAt = new Date().toISOString();
+          const live = await captureGps({
+            allowDemoFallback: isOfflineDemo(),
+            anchorFallback: gpsAnchorForFieldWork(resumeHotspot, location.greenhouseId),
+          });
+          const roundIdForSnap = session?.roundId ?? (!hasConfiguredBackend() ? activeRoundId : null);
+          const walkCrumbs = roundIdForSnap
+            ? useScoutingRouteBufferStore.getState().getPointsForRound(roundIdForSnap)
+            : [];
+          const snappedLive = coordsSnappedToWalkPath(live, walkCrumbs);
           const coords = resolveScoutCoords({
-            live: await captureGps({
-              allowDemoFallback: !hasSupabaseEnv(),
-              anchorFallback: gpsAnchorForFieldWork(resumeHotspot, location.greenhouseId),
-            }),
+            live: snappedLive,
             greenhouseId: location.greenhouseId,
             greenhouseName: location.greenhouseName,
             column: values.column_no,
@@ -217,9 +256,9 @@ export function ScoutingStopForm({
             }),
           );
 
-          if (!hasSupabaseEnv()) {
+          if (isOfflineDemo()) {
             addDemo({
-              roundId: activeRoundId,
+              roundId,
               scoutName: "Demo Scout",
               farmName: location.farmName,
               farmId: location.farmId,
@@ -235,11 +274,15 @@ export function ScoutingStopForm({
               rating: values.rating ?? null,
               latitude: coords.latitude,
               longitude: coords.longitude,
+              recordedAt: capturedAt,
+              imageUrl: file ? `demo-photo://${file.name}` : null,
               observations,
             });
             toast({ title: "Scouting stop saved", tone: "success" });
+            incrementStopCount();
             form.reset({ ...form.getValues(), variety: "", issue_name: "", rating: undefined, notes: "" });
             setParams(defaultParams());
+            setFile(null);
             onSuccess?.({
               beds: values.beds,
               column: values.column_no,
@@ -257,20 +300,22 @@ export function ScoutingStopForm({
             return;
           }
 
-          const supabase = createClient();
-          const { data: profile } = await supabase
-            .from("users")
-            .select("id")
-            .eq("id", user.id)
-            .maybeSingle();
-          if (!profile) {
-            toast({
-              title: "Worker profile missing",
-              description:
-                "Run supabase/link-auth-users.sql for this account in Supabase.",
-              tone: "error",
-            });
-            return;
+          if (!hasMssqlEnv()) {
+            const supabase = createClient();
+            const { data: profile } = await supabase
+              .from("users")
+              .select("id")
+              .eq("id", user.id)
+              .maybeSingle();
+            if (!profile) {
+              toast({
+                title: "Worker profile missing",
+                description:
+                  "Run supabase/link-auth-users.sql for this account in Supabase.",
+                tone: "error",
+              });
+              return;
+            }
           }
 
           const [cats, varieties, parameters] = await Promise.all([
@@ -278,8 +323,13 @@ export function ScoutingStopForm({
             listCropVarieties(),
             listScoutingParameters(),
           ]);
-          if (cats.error || varieties.error || parameters.error) {
-            throw cats.error ?? varieties.error ?? parameters.error;
+          const svcErr = cats.error ?? varieties.error ?? parameters.error;
+          if (svcErr) {
+            throw new Error(
+              typeof svcErr === "object" && svcErr && "message" in svcErr
+                ? String((svcErr as { message: string }).message)
+                : String(svcErr),
+            );
           }
 
           const catRow = cats.data?.find((c) => c.name === values.category);
@@ -289,14 +339,17 @@ export function ScoutingStopForm({
           if (!catRow || !varRow) {
             toast({
               title: "Master data missing",
-              description: "Run Supabase migration 016 (Star farm seed).",
+              description: hasMssqlEnv()
+                ? "Run sql/mssql/002_seed_bemack_core.sql on the Scouting database."
+                : "Run Supabase migration 016 (Star farm seed).",
               tone: "error",
             });
             return;
           }
 
           const paramRows = parameters.data ?? [];
-          const obsInputs = SCOUTING_PARAMETERS.filter((p) => params[p.id]?.present)
+          const presentParams = SCOUTING_PARAMETERS.filter((p) => params[p.id]?.present);
+          const obsInputs = presentParams
             .map((p) => {
               const row = paramRows.find((r) => r.param_key === p.id);
               return row
@@ -309,18 +362,62 @@ export function ScoutingStopForm({
             })
             .filter(Boolean) as { parameter_id: string; present: boolean; rating: number | null }[];
 
-          let roundId: string | null = null;
-          const active = await getActiveRound(user.id, location.greenhouseId);
-          if (active.data) {
-            roundId = active.data.id;
-          } else {
-            const started = await startScoutingRound({
-              scout_id: user.id,
-              farm_id: location.farmId,
-              greenhouse_id: location.greenhouseId,
+          if (presentParams.length && obsInputs.length < presentParams.length) {
+            toast({
+              title: "Some parameters could not be saved",
+              description:
+                "A checked parameter is missing from the database. Run Star farm seed (migration 016).",
+              tone: "error",
             });
-            if (started.error) throw started.error;
-            roundId = started.data?.id ?? null;
+            return;
+          }
+
+          const offline =
+            typeof navigator !== "undefined" && navigator.onLine === false;
+
+          let imagePath: string | null = null;
+          let pendingPhoto:
+            | { blobKey: string; fileName: string; contentType: string }
+            | undefined;
+          if (file && !offline) {
+            try {
+              imagePath = await uploadScoutingEvidence(file);
+            } catch (uploadError) {
+              if (isLikelyOfflineError(uploadError) && file) {
+                const blobKey = `scout-${crypto.randomUUID()}`;
+                await putEvidenceBlob(blobKey, file, {
+                  fileName: file.name,
+                  contentType: file.type || "image/jpeg",
+                });
+                pendingPhoto = {
+                  blobKey,
+                  fileName: file.name,
+                  contentType: file.type || "image/jpeg",
+                };
+              } else if (!isLikelyOfflineError(uploadError)) {
+                toast({
+                  title: "Photo did not upload",
+                  description: "Stop will still save without the photo.",
+                  tone: "default",
+                });
+              }
+            }
+          } else if (file && offline) {
+            const blobKey = `scout-${crypto.randomUUID()}`;
+            await putEvidenceBlob(blobKey, file, {
+              fileName: file.name,
+              contentType: file.type || "image/jpeg",
+            });
+            pendingPhoto = {
+              blobKey,
+              fileName: file.name,
+              contentType: file.type || "image/jpeg",
+            };
+            toast({
+              title: "Photo queued offline",
+              description: "Photo will upload with this stop when you reconnect.",
+              tone: "default",
+            });
           }
 
           const payload = {
@@ -339,15 +436,22 @@ export function ScoutingStopForm({
             latitude: coords.latitude,
             longitude: coords.longitude,
             notes: values.notes || null,
+            recorded_at: capturedAt,
+            image_url: imagePath,
             observations: obsInputs,
           };
 
           const finishSaved = (queued: boolean) => {
+            incrementStopCount();
             toast({
               title: queued ? "Scouting stop queued" : "Scouting stop saved",
               description: queued
-                ? "No signal — this stop will upload when you reconnect."
-                : undefined,
+                ? pendingPhoto
+                  ? "No signal — stop + photo will upload when you reconnect."
+                  : "No signal — this stop will upload when you reconnect."
+                : imagePath
+                  ? "Photo evidence attached."
+                  : undefined,
               tone: queued ? "default" : "success",
             });
             form.reset({
@@ -358,6 +462,7 @@ export function ScoutingStopForm({
               notes: "",
             });
             setParams(defaultParams());
+            setFile(null);
             onSuccess?.({
               beds: values.beds,
               column: values.column_no,
@@ -368,8 +473,8 @@ export function ScoutingStopForm({
             });
           };
 
-          if (typeof navigator !== "undefined" && navigator.onLine === false) {
-            enqueueScout(payload);
+          if (offline || pendingPhoto) {
+            enqueueScout(payload, { pendingPhoto });
             finishSaved(true);
             return;
           }
@@ -378,7 +483,7 @@ export function ScoutingStopForm({
 
           if (error) {
             if (isLikelyOfflineError(error)) {
-              enqueueScout(payload);
+              enqueueScout(payload, { pendingPhoto });
               finishSaved(true);
               return;
             }
@@ -428,9 +533,16 @@ export function ScoutingStopForm({
         </p>
       ) : (
         <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
-          Waiting for GPS — allow location or pick a greenhouse in Live GPS above.
+          Waiting for greenhouse — pick one in Where are you? above.
         </p>
       )}
+
+      {!roundReady ? (
+        <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+          Tap <span className="font-medium">Start walking</span> first so this log stays on your
+          walk.
+        </p>
+      ) : null}
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Category</span>
@@ -477,7 +589,7 @@ export function ScoutingStopForm({
           <p className="text-sm">
             <span className="font-medium">Heat map cell</span>
             {" · "}
-            Beds {form.watch("beds")} · Col {initialCell.column} · Bay {initialCell.bay}
+            Col {initialCell.column} · Bay {initialCell.bay}
           </p>
           {onChangeCell ? (
             <Button type="button" variant="ghost" size="sm" onClick={onChangeCell}>
@@ -488,7 +600,7 @@ export function ScoutingStopForm({
       ) : (
         <div className="grid grid-cols-3 gap-2">
           <label className="block space-y-1">
-            <span className="text-xs font-medium">Beds</span>
+            <span className="text-xs font-medium">Bed no.</span>
             <input
               type="number"
               min={1}
@@ -527,6 +639,22 @@ export function ScoutingStopForm({
 
       <fieldset className="space-y-3 rounded-xl border border-border p-4">
         <legend className="px-1 text-sm font-semibold">Primary issue (VegPro pest & disease list)</legend>
+        <p className="text-xs text-muted-foreground">
+          Choose {SCOUT_NONE_FOUND} if this cell is clean. That keeps coverage accurate without
+          inventing a pest or disease.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          data-testid="cell-clean"
+          onClick={() => {
+            form.setValue("issue_name", SCOUT_NONE_FOUND, { shouldValidate: true });
+            form.setValue("rating", undefined);
+          }}
+        >
+          Cell clean — {SCOUT_NONE_FOUND}
+        </Button>
         <div className="flex gap-2">
           {(["pest", "disease"] as const).map((t) => (
             <label key={t} className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
@@ -535,7 +663,10 @@ export function ScoutingStopForm({
                 value={t}
                 className="size-4"
                 {...form.register("issue_type")}
-                onChange={() => form.setValue("issue_name", "")}
+                onChange={(e) => {
+                  form.setValue("issue_type", e.target.value as "pest" | "disease");
+                  form.setValue("issue_name", "");
+                }}
               />
               <span className="text-sm capitalize">{t}</span>
             </label>
@@ -547,6 +678,7 @@ export function ScoutingStopForm({
           {...form.register("issue_name")}
         >
           <option value="">Select {issueType}</option>
+          <option value={SCOUT_NONE_FOUND}>{SCOUT_NONE_FOUND}</option>
             {issues.map((i) => (
             <option key={i} value={i}>
               {issueLabel(i)}
@@ -628,9 +760,28 @@ export function ScoutingStopForm({
         />
       </label>
 
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Photo evidence (optional)</span>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          data-testid="scout-photo"
+          className="w-full text-sm"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+        {file ? (
+          <p className="text-xs text-muted-foreground">Selected: {file.name}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Attach a leaf/pest photo for manager audit. Skipped if you are offline.
+          </p>
+        )}
+      </label>
+
       <p className="text-xs text-muted-foreground">GPS: {gpsLabel}</p>
 
-      <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+      <Button type="submit" size="lg" className="w-full" disabled={submitting || !roundReady}>
         {submitting ? "Saving…" : "Save scouting stop"}
       </Button>
     </form>

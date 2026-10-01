@@ -1,7 +1,10 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import type { AppUser } from "@/types/db";
+import { mssqlListStaffAccountsAction } from "@/services/mssql/ops-actions";
 
 export async function listStaffAccounts() {
+  if (routeDataThroughMssql()) return mssqlListStaffAccountsAction();
   const supabase = createClient();
   return supabase
     .from("users")

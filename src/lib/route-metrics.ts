@@ -62,8 +62,8 @@ export function evaluateRoutePoint(
     maxSpeedMps?: number;
   },
 ): RouteRecordDecision {
-  const minIntervalMs = options?.minIntervalMs ?? 10_000;
-  const minDistanceM = options?.minDistanceM ?? 18;
+  const minIntervalMs = options?.minIntervalMs ?? 8_000;
+  const minDistanceM = options?.minDistanceM ?? 10;
   const maxAccuracyM = options?.maxAccuracyM ?? 80;
   const maxSpeedMps = options?.maxSpeedMps ?? 6;
 

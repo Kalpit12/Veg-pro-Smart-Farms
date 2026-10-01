@@ -3,13 +3,14 @@
 import { useMemo } from "react";
 import { startOfDay } from "date-fns";
 
-import { useScoutingData } from "@/hooks/use-scouting-data";
+import { useScoutingData, useScoutingRounds } from "@/hooks/use-scouting-data";
 import { formatDistance } from "@/lib/route-metrics";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { useScoutingStore } from "@/store/scouting-store";
 
 export function ScoutingKpiDashboard() {
   const { records } = useScoutingData(1);
+  const { rounds } = useScoutingRounds(80);
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const demoRecords = useScoutingStore((s) => s.demoRecords);
 
@@ -79,39 +80,81 @@ export function ScoutingKpiDashboard() {
     const todayRecords = records.filter(
       (r) => new Date(r.recordedAt).getTime() >= todayStart,
     );
-    const greenhouses = new Set(todayRecords.map((r) => r.greenhouseName)).size;
+    const todayRounds = rounds.filter(
+      (r) => new Date(r.startedAt).getTime() >= todayStart,
+    );
+    const greenhouses = new Set(
+      [
+        ...todayRecords.map((r) => r.greenhouseName),
+        ...todayRounds.map((r) => r.greenhouseName),
+      ].filter(Boolean),
+    ).size;
     const farms = new Set(todayRecords.map((r) => r.farmName)).size;
     const highSeverity = todayRecords.filter((r) => (r.rating ?? 0) >= 4).length;
-    const scouts = new Set(todayRecords.map((r) => r.scoutName)).size;
+    const scouts = new Set(
+      [...todayRecords.map((r) => r.scoutName), ...todayRounds.map((r) => r.scoutName)],
+    ).size;
+    const distance = todayRounds.reduce((s, r) => s + (r.distanceM ?? 0), 0);
+    const coverageVals = todayRounds
+      .map((r) => r.coveragePct)
+      .filter((v): v is number => v != null);
+    const avgCoverage = coverageVals.length
+      ? Math.round(
+          (coverageVals.reduce((a, b) => a + b, 0) / coverageVals.length) * 10,
+        ) / 10
+      : null;
 
-    const byScout = new Map<string, { greenhouses: Set<string>; observations: number }>();
-    for (const r of todayRecords) {
-      const cur = byScout.get(r.scoutName) ?? {
+    const byScout = new Map<
+      string,
+      { distance: number; greenhouses: Set<string>; observations: number; durationS: number }
+    >();
+    for (const round of todayRounds) {
+      const cur = byScout.get(round.scoutName) ?? {
+        distance: 0,
         greenhouses: new Set<string>(),
         observations: 0,
+        durationS: 0,
+      };
+      cur.distance += round.distanceM ?? 0;
+      cur.greenhouses.add(round.greenhouseName);
+      cur.observations += round.stopCount;
+      cur.durationS += round.durationS ?? 0;
+      byScout.set(round.scoutName, cur);
+    }
+    for (const r of todayRecords) {
+      const cur = byScout.get(r.scoutName) ?? {
+        distance: 0,
+        greenhouses: new Set<string>(),
+        observations: 0,
+        durationS: 0,
       };
       cur.greenhouses.add(r.greenhouseName);
-      cur.observations += 1;
+      if (!todayRounds.some((round) => round.scoutName === r.scoutName)) {
+        cur.observations += 1;
+      }
       byScout.set(r.scoutName, cur);
     }
 
     return {
-      scoutsActive: scouts,
-      distanceCovered: 0,
+      scoutsActive: scouts || todayRounds.filter((r) => r.status === "active").length,
+      distanceCovered: distance,
       farmsCompleted: farms,
       greenhousesInspected: greenhouses,
       newObservations: todayRecords.length,
       highSeverity,
-      coverage: null as number | null,
+      coverage: avgCoverage,
       performance: Array.from(byScout.entries()).map(([name, v]) => ({
         name,
-        distance: 0,
+        distance: v.distance,
         greenhouses: v.greenhouses.size,
         observations: v.observations,
-        avgMinutes: null as number | null,
+        avgMinutes:
+          v.greenhouses.size > 0 && v.durationS > 0
+            ? Math.round(v.durationS / 60 / v.greenhouses.size)
+            : null,
       })),
     };
-  }, [records, demoRounds, demoRecords]);
+  }, [records, rounds, demoRounds, demoRecords]);
 
   const cards = [
     { label: "Scouts active", value: String(kpis.scoutsActive) },

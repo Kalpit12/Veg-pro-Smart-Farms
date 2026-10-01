@@ -15,13 +15,14 @@ export function useRealtimePostgres(
   prefix: string,
   tables: RealtimeTable[],
   onChange: () => void,
+  options?: { disabled?: boolean },
 ) {
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
   useEffect(() => {
-    if (!hasSupabaseEnv()) return;
+    if (options?.disabled || !hasSupabaseEnv()) return;
 
     const supabase = createClient();
     let channel = supabase.channel(`${prefix}-${instanceId}`);
@@ -39,5 +40,5 @@ export function useRealtimePostgres(
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [prefix, instanceId, tables]);
+  }, [prefix, instanceId, tables, options?.disabled]);
 }

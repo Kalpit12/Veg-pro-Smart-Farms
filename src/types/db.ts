@@ -55,6 +55,10 @@ export interface SprayTreatment {
   product_name: string;
   notes: string | null;
   image_url: string | null;
+  /** Hotspot severity when the spray was logged. */
+  severity_before: number | null;
+  /** Observed severity after treatment (Action Evaluate). */
+  severity_after: number | null;
   created_at: string;
 }
 
@@ -127,6 +131,7 @@ export interface ScoutingRecord {
   latitude: number | null;
   longitude: number | null;
   notes: string | null;
+  image_url: string | null;
   recorded_at: string;
   created_at: string;
 }

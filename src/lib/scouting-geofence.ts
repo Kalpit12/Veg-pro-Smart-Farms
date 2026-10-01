@@ -1,4 +1,8 @@
-import { BEMACK_DEMO_LOCATIONS } from "@/lib/bemack-master-data";
+import {
+  anchorByGreenhouseId,
+  syntheticGreenhouseAnchors,
+  type GreenhouseAnchor,
+} from "@/lib/greenhouse-locations";
 import type { GpsCoords } from "@/lib/gps";
 import { haversineMeters } from "@/lib/route-metrics";
 
@@ -6,15 +10,14 @@ import { haversineMeters } from "@/lib/route-metrics";
 export const GREENHOUSE_GEOFENCE_M = 250;
 
 /**
- * Distances beyond this mean the assigned greenhouse anchor is not the real
- * farm location (e.g. demo Nairobi anchors vs Naivasha GPS) — warn differently,
- * do not treat as "left the greenhouse."
+ * Distances beyond this mean the assigned greenhouse anchor is not near the
+ * phone GPS — warn as unreliable fence (wrong farm base / missing survey).
  */
 export const GEOFENCE_ANCHOR_MISMATCH_M = 5_000;
 
 export type GeofenceStatus = {
   inside: boolean;
-  /** True when GPS is so far from demo/DB anchors that the fence is unreliable */
+  /** True when GPS is so far from anchors that the fence is unreliable */
   anchorMismatch: boolean;
   distanceM: number;
   greenhouseName: string;
@@ -24,9 +27,10 @@ export type GeofenceStatus = {
 export function checkGreenhouseGeofence(
   coords: GpsCoords,
   greenhouseId: string | null | undefined,
+  locations: GreenhouseAnchor[] = syntheticGreenhouseAnchors(),
 ): GeofenceStatus | null {
   if (!greenhouseId) return null;
-  const loc = BEMACK_DEMO_LOCATIONS.find((l) => l.greenhouseId === greenhouseId);
+  const loc = anchorByGreenhouseId(greenhouseId, locations);
   if (!loc) return null;
   const distanceM = Math.round(
     haversineMeters(coords, { latitude: loc.lat, longitude: loc.lng }),

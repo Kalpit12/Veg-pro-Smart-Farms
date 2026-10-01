@@ -52,7 +52,7 @@ type MapLayers = {
   workers: boolean;
 };
 
-export function FarmMap({ basePath = "/manager" }: { basePath?: "/manager" | "/admin" }) {
+export function FarmMap() {
   const { toast } = useToast();
   const { tick } = useDemoRefresh();
   const demoHotspots = useFieldOpsStore((s) => s.demoHotspots);

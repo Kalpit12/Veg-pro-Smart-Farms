@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 type ScanContext = {
   qrValue: string | null;
@@ -35,15 +35,6 @@ export const useScanStore = create<ScanContext>()(
     }),
     {
       name: "vegpro-scan-assignment",
-      storage: createJSONStorage(() =>
-        typeof window === "undefined"
-          ? {
-              getItem: () => null,
-              setItem: () => undefined,
-              removeItem: () => undefined,
-            }
-          : sessionStorage,
-      ),
       partialize: (s) => ({
         qrValue: s.qrValue,
         farmId: s.farmId,

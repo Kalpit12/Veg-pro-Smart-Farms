@@ -6,8 +6,7 @@ export default function WorkerFieldPage() {
       <header>
         <h1 className="text-xl font-semibold">Field work</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Live GPS assigns your greenhouse unless you check in or override (then the house
-          stays locked). Tap a heat-map cell — that bay × column is the scouting record.
+          1. Confirm greenhouse · 2. Start walking · 3. Log what you see
         </p>
       </header>
       <FieldWorkPanel />

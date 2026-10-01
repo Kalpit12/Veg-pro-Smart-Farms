@@ -4,6 +4,7 @@ import { DashboardPageHeader } from "@/features/dashboard/components/dashboard-p
 import { LiveActivityFeed } from "@/features/dashboard/components/live-activity-feed";
 import { MetricsGrid } from "@/features/dashboard/components/metrics-grid";
 import { OperationsAlerts } from "@/features/dashboard/components/operations-alerts";
+import { YesterdayScoutedGreenhouses } from "@/features/dashboard/components/yesterday-scouted-greenhouses";
 import { SprayWorkProgramPanel } from "@/features/scouting/spray-work-program-panel";
 
 export default function AdminDashboardPage() {
@@ -14,6 +15,7 @@ export default function AdminDashboardPage() {
         description="Hotspots, sprays, workers, and scouting."
         variant="hero"
       />
+      <YesterdayScoutedGreenhouses />
       <MetricsGrid audience="admin" />
       <OperationsAlerts audience="admin" />
       <SprayWorkProgramPanel compact basePath="/admin" />

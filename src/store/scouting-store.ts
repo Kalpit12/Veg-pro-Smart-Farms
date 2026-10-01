@@ -49,6 +49,7 @@ export type DemoScoutingRecord = {
   recordedAt: string;
   latitude: number | null;
   longitude: number | null;
+  imageUrl?: string | null;
   observations: { parameterId: string; present: boolean; rating: number | null }[];
 };
 

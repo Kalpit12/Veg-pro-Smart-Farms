@@ -87,9 +87,9 @@ export function HotspotResumePanel() {
     <div className="glass-card space-y-3 rounded-2xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Open hotspots</h2>
+          <h2 className="text-sm font-semibold">Open problems</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Tap Resume here to continue work at the same map point.
+            Tap Resume to keep working on the same problem.
           </p>
         </div>
         <MapPin className="size-5 shrink-0 text-primary" />
@@ -97,12 +97,10 @@ export function HotspotResumePanel() {
 
       {resumeHotspot ? (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
-          <p className="font-medium text-primary">Resuming at map point</p>
+          <p className="font-medium text-primary">Resuming this problem</p>
           <p className="mt-1">
-            {resumeHotspot.pest_type} — {resumeHotspot.main_issue}
-          </p>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">
-            {resumeHotspot.latitude.toFixed(5)}, {resumeHotspot.longitude.toFixed(5)}
+            {resumeHotspot.pest_type}
+            {resumeHotspot.main_issue ? ` — ${resumeHotspot.main_issue}` : ""}
           </p>
           <Button
             type="button"
@@ -112,7 +110,7 @@ export function HotspotResumePanel() {
             onClick={clearResumeHotspot}
           >
             <RotateCcw className="mr-1 size-3.5" />
-            Clear resume point
+            Clear
           </Button>
         </div>
       ) : null}
@@ -130,10 +128,12 @@ export function HotspotResumePanel() {
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold">{hotspot.pest_type}</p>
                   <Badge variant={hotspot.severity >= 4 ? "danger" : "warning"}>
-                    Severity {hotspot.severity}/5
+                    Level {hotspot.severity}/5
                   </Badge>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{hotspot.main_issue}</p>
+                {hotspot.main_issue ? (
+                  <p className="mt-1 text-xs text-muted-foreground">{hotspot.main_issue}</p>
+                ) : null}
                 <p className="mt-1 text-xs text-muted-foreground">
                   Reported{" "}
                   {formatDistanceToNow(new Date(hotspot.created_at), { addSuffix: true })}
@@ -145,14 +145,14 @@ export function HotspotResumePanel() {
                 variant={resumeHotspot?.id === hotspot.id ? "default" : "outline"}
                 onClick={() => resumeAt(hotspot)}
               >
-                Resume here
+                Resume
               </Button>
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No open hotspots in {scan.greenhouseName ?? "this greenhouse"}.
+          No open problems in {scan.greenhouseName ?? "this greenhouse"}.
         </p>
       )}
     </div>

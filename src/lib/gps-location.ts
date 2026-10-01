@@ -1,5 +1,11 @@
-import { BEMACK_DEMO_LOCATIONS, BEMACK_FARM_ID, BEMACK_FARM_NAME } from "@/lib/bemack-master-data";
+import { BEMACK_FARM_ID, BEMACK_FARM_NAME } from "@/lib/bemack-master-data";
+import {
+  anchorByGreenhouseId,
+  syntheticGreenhouseAnchors,
+  type GreenhouseAnchor,
+} from "@/lib/greenhouse-locations";
 import type { GpsCoords } from "@/lib/gps";
+import { checkGreenhouseGeofence } from "@/lib/scouting-geofence";
 
 export type GreenhouseLocation = {
   farmId: string;
@@ -31,11 +37,34 @@ export function distanceToLocation(
   return Math.round(haversineM(coords, loc));
 }
 
+export type FindNearestGreenhouseOptions = {
+  /** Keep current house when still inside its geofence (avoids neighbor bleed on row ends). */
+  preferGreenhouseId?: string | null;
+};
+
 /** Nearest Star greenhouse from live GPS (geofence-style, no QR). */
 export function findNearestGreenhouse(
   coords: GpsCoords,
-  locations = BEMACK_DEMO_LOCATIONS,
+  locations: GreenhouseAnchor[] = syntheticGreenhouseAnchors(),
+  options?: FindNearestGreenhouseOptions,
 ): GreenhouseLocation {
+  const preferId = options?.preferGreenhouseId;
+  if (preferId) {
+    const fence = checkGreenhouseGeofence(coords, preferId, locations);
+    const preferred = anchorByGreenhouseId(preferId, locations);
+    if (preferred && fence?.inside && !fence.anchorMismatch) {
+      return {
+        farmId: preferred.farmId,
+        farmName: preferred.farmName,
+        greenhouseId: preferred.greenhouseId,
+        greenhouseName: preferred.greenhouseName,
+        lat: preferred.lat,
+        lng: preferred.lng,
+        distanceM: fence.distanceM,
+      };
+    }
+  }
+
   let best = locations[0];
   let bestD = Infinity;
 
@@ -59,7 +88,7 @@ export function findNearestGreenhouse(
 }
 
 export function defaultFarmContext() {
-  const loc = BEMACK_DEMO_LOCATIONS[0];
+  const loc = syntheticGreenhouseAnchors()[0];
   return {
     farmId: BEMACK_FARM_ID,
     farmName: BEMACK_FARM_NAME,

@@ -27,9 +27,9 @@ export type ScoutingGridInput = {
 };
 
 function cellScore(rating: number | null, issueType: ScoutingIssueType) {
-  const base = rating ?? 3;
+  if (rating == null) return 0;
   const weight = issueType === "disease" ? 1.05 : 1;
-  return Math.min(100, Math.round(base * 20 * weight));
+  return Math.min(100, Math.round(rating * 20 * weight));
 }
 
 export function buildGreenhouseGrid(
@@ -42,6 +42,7 @@ export function buildGreenhouseGrid(
   const map = new Map<string, GridCell>();
 
   for (const r of filtered) {
+    if (!r.issue || r.issue.trim().toLowerCase() === "none found") continue;
     const key = `${r.columnNo}-${r.bayNo}`;
     const score = cellScore(r.rating, r.issueType);
     const existing = map.get(key);
