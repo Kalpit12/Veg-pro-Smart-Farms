@@ -152,9 +152,11 @@ function ActivityFeedTabs({
 export function LiveActivityFeed({
   variant = "admin",
   className,
+  liveUpdates = true,
 }: {
   variant?: "manager" | "admin";
   className?: string;
+  liveUpdates?: boolean;
 }) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [historyItems, setHistoryItems] = useState<FeedItem[]>([]);
@@ -241,7 +243,7 @@ export function LiveActivityFeed({
     return () => window.removeEventListener("vegpro-runtime-config", onConfig);
   }, [refresh]);
 
-  useRealtimeFieldFeed(refresh);
+  useRealtimeFieldFeed(refresh, { enabled: liveUpdates });
 
   const displayItems = useMemo(() => {
     if (variant === "manager") return items;

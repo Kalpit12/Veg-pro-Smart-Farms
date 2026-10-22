@@ -301,6 +301,27 @@ export function sortGreenhousesBySeverity(
     .map(({ id, name }) => ({ id, name }));
 }
 
+/** Greenhouses that appear in scouting or spray rows (production trends grid). */
+export function collectTrendGreenhouses(
+  rows: TrendsScoutingRow[],
+  sprays: TrendsSprayRow[],
+): { id: string; name: string }[] {
+  const byId = new Map<string, string>();
+  for (const row of rows) {
+    if (row.greenhouseId) {
+      byId.set(row.greenhouseId, row.greenhouseName || row.greenhouseId);
+    }
+  }
+  for (const spray of sprays) {
+    if (spray.greenhouseId && !byId.has(spray.greenhouseId)) {
+      byId.set(spray.greenhouseId, spray.greenhouseId);
+    }
+  }
+  return Array.from(byId.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => compareStarGreenhouseName(a.name, b.name));
+}
+
 export function collectFilterOptions(rows: TrendsScoutingRow[]) {
   const issues = new Set<string>();
   const varieties = new Set<string>();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ChevronRight, Leaf } from "lucide-react";
 
@@ -29,11 +29,13 @@ import { cn } from "@/lib/utils";
 type Props = {
   scope?: "all" | "assigned";
   scoutingBasePath?: string;
+  liveUpdates?: boolean;
 };
 
 export function YesterdayScoutedGreenhouses({
   scope = "all",
   scoutingBasePath = "/admin/scouting",
+  liveUpdates = true,
 }: Props) {
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,7 @@ export function YesterdayScoutedGreenhouses({
   const [assignedGreenhouseIds, setAssignedGreenhouseIds] = useState<
     Set<string> | null
   >(scope === "assigned" ? null : new Set());
+  const initialLoad = useRef(true);
 
   useEffect(() => {
     if (scope !== "assigned") return;
@@ -66,7 +69,9 @@ export function YesterdayScoutedGreenhouses({
 
   const load = useCallback(async () => {
     if (scope === "assigned" && assignedGreenhouseIds === null) return;
-    setLoading(true);
+    if (initialLoad.current) {
+      setLoading(true);
+    }
     if (isOfflineDemo()) {
       const list = filterByScope(
         dedupeByGreenhouse(filterRoundsStartedYesterday(demoRounds)),
@@ -89,15 +94,19 @@ export function YesterdayScoutedGreenhouses({
       );
     }
     setLoading(false);
+    initialLoad.current = false;
   }, [demoRounds, scope, assignedGreenhouseIds, filterByScope]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useRealtimeScouting(() => {
-    void load();
-  });
+  useRealtimeScouting(
+    () => {
+      void load();
+    },
+    { enabled: liveUpdates },
+  );
 
   if (selected) {
     return (

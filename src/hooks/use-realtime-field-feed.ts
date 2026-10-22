@@ -1,5 +1,6 @@
 "use client";
 
+import type { MssqlPollOptions } from "@/hooks/use-mssql-poll";
 import { useRealtimePostgres } from "@/hooks/use-realtime-postgres";
 
 const FIELD_FEED_TABLES = [
@@ -9,6 +10,10 @@ const FIELD_FEED_TABLES = [
   { table: "activities" },
 ];
 
-export function useRealtimeFieldFeed(onChange: () => void) {
-  useRealtimePostgres("field-feed", FIELD_FEED_TABLES, onChange);
+export function useRealtimeFieldFeed(
+  onChange: () => void,
+  options?: Pick<MssqlPollOptions, "enabled">,
+) {
+  const poll = options?.enabled ?? true;
+  useRealtimePostgres("field-feed", FIELD_FEED_TABLES, onChange, { disabled: !poll });
 }

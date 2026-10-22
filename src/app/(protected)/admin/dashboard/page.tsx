@@ -15,16 +15,16 @@ export default function AdminDashboardPage() {
         description="Hotspots, sprays, workers, and scouting."
         variant="hero"
       />
-      <YesterdayScoutedGreenhouses />
-      <MetricsGrid audience="admin" />
-      <OperationsAlerts audience="admin" />
+      <YesterdayScoutedGreenhouses liveUpdates={false} />
+      <MetricsGrid audience="admin" liveUpdates={false} />
+      <OperationsAlerts audience="admin" liveUpdates={false} />
       <SprayWorkProgramPanel compact basePath="/admin" />
       <div className="grid items-start gap-4 xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
           <ActivityChart />
           <AdminDailyAnalytics section="mix" />
         </div>
-        <LiveActivityFeed className="xl:sticky xl:top-4" />
+        <LiveActivityFeed className="xl:sticky xl:top-4" liveUpdates={false} />
       </div>
       <AdminDailyAnalytics section="houses" />
     </section>

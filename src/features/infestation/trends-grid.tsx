@@ -19,6 +19,7 @@ import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import {
   buildTrendsGrid,
   collectFilterOptions,
+  collectTrendGreenhouses,
   filterTrendsRows,
   sortGreenhousesBySeverity,
   trendsCellKey,
@@ -224,29 +225,28 @@ export function TrendsGrid({
 
   const model = useMemo(() => {
     const dates = listTrendDateKeys(days, mode);
-    const greenhouses =
-      scope === "assigned" ? (assignedGreenhouses ?? []) : bemackTrendGreenhouses();
     const dateLabels = buildTrendDateLabels(dates, mode);
 
-    const scoped = scope === "assigned";
-    const liveEmpty = hasConfiguredBackend() && sourceRows.length === 0;
-    const useDemoFallback = !scoped && (isOfflineDemo() || liveEmpty);
-
-    const rows = useDemoFallback ? buildDemoTrendsRows(days) : filteredRows;
-    const sprayRows = useDemoFallback ? buildDemoSprayRows(days) : sprays;
-
-    let rowsForGrid = useDemoFallback
-      ? filterTrendsRows(rows, { issueType, issue, variety })
-      : rows;
+    const useDemo = isOfflineDemo();
+    let rowsForGrid = useDemo
+      ? filterTrendsRows(buildDemoTrendsRows(days), { issueType, issue, variety })
+      : filteredRows;
 
     if (assignedIdSet) {
       rowsForGrid = rowsForGrid.filter((r) => assignedIdSet.has(r.greenhouseId));
     }
 
-    let sprayForGrid = sprayRows;
+    let sprayForGrid = useDemo ? buildDemoSprayRows(days) : sprays;
     if (assignedIdSet) {
-      sprayForGrid = sprayRows.filter((s) => assignedIdSet.has(s.greenhouseId));
+      sprayForGrid = sprayForGrid.filter((s) => assignedIdSet.has(s.greenhouseId));
     }
+
+    const greenhouses =
+      scope === "assigned"
+        ? (assignedGreenhouses ?? [])
+        : useDemo
+          ? bemackTrendGreenhouses()
+          : collectTrendGreenhouses(rowsForGrid, sprayForGrid);
 
     return buildTrendsGrid(rowsForGrid, {
       dates,
@@ -263,7 +263,6 @@ export function TrendsGrid({
     issueType,
     issue,
     variety,
-    sourceRows.length,
     scope,
     assignedGreenhouses,
     assignedIdSet,
@@ -292,8 +291,7 @@ export function TrendsGrid({
 
   const latestDate = model.dates[model.dates.length - 1];
   const { summary } = model;
-  const showingDemoFallback =
-    scope !== "assigned" && (isOfflineDemo() || sourceRows.length === 0);
+  const showingDemo = isOfflineDemo();
 
   return (
     <div className="space-y-4">
@@ -445,7 +443,11 @@ export function TrendsGrid({
                     colSpan={model.dates.length + 1}
                     className="px-3 py-8 text-center text-sm text-muted-foreground"
                   >
-                    No greenhouses match the current filters.
+                    {isOfflineDemo()
+                      ? "No greenhouses match the current filters."
+                      : sourceRows.length === 0
+                        ? "No scouting records in this period. Trends appear after scouts log stops in the field."
+                        : "No greenhouses match the current filters."}
                   </td>
                 </tr>
               ) : (
@@ -536,9 +538,7 @@ export function TrendsGrid({
           ? " (filtered)"
           : ""}
         . Empty cells (·) mean not scouted — not necessarily clean.
-        {isOfflineDemo() || showingDemoFallback
-          ? " Showing demo trend data."
-          : null}
+        {showingDemo ? " Showing demo trend data." : null}
       </p>
     </div>
   );

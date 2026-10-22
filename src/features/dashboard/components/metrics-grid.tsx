@@ -8,14 +8,20 @@ import { useCallback, useEffect, useState } from "react";
 import { MetricCard } from "@/features/dashboard/components/metric-card";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import { useRealtimePositions } from "@/hooks/use-realtime-positions";
-import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoKpis } from "@/lib/demo-field-data";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { getDashboardKpis } from "@/services/supabase/dashboard-service";
 
-export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "admin" }) {
-  const { records: scoutingRecords } = useScoutingData(1);
+export function MetricsGrid({
+  audience = "manager",
+  liveUpdates = true,
+}: {
+  audience?: "manager" | "admin";
+  liveUpdates?: boolean;
+}) {
+  const pollOpts = { enabled: liveUpdates };
+  const { records: scoutingRecords } = useScoutingData(1, pollOpts);
   const [kpis, setKpis] = useState({
     activeHotspots: 0,
     spraysToday: 0,
@@ -74,9 +80,8 @@ export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "
     return () => window.removeEventListener("vegpro-runtime-config", onConfig);
   }, [refresh]);
 
-  useRealtimeHotspots(refresh);
-  useRealtimePositions(refresh);
-  useRealtimeScouting(refresh);
+  useRealtimeHotspots(refresh, pollOpts);
+  useRealtimePositions(refresh, pollOpts);
 
   const demoScoutingToday = isOfflineDemo()
     ? scoutingRecords.filter((r) => {

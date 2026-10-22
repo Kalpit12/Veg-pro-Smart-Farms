@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-
 import { hasMssqlEnv } from "@/lib/data-backend";
+import { useMssqlPoll, type MssqlPollOptions } from "@/hooks/use-mssql-poll";
 import { useRealtimePostgres } from "@/hooks/use-realtime-postgres";
 
 const SCOUTING_TABLES = [
@@ -10,16 +9,10 @@ const SCOUTING_TABLES = [
   { table: "scouting_rounds" },
 ];
 
-const MSSQL_POLL_MS = 12_000;
-
-export function useRealtimeScouting(onChange: () => void) {
-  useRealtimePostgres("scouting", SCOUTING_TABLES, onChange, { disabled: hasMssqlEnv() });
-
-  useEffect(() => {
-    if (!hasMssqlEnv()) return;
-    const id = window.setInterval(() => {
-      onChange();
-    }, MSSQL_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [onChange]);
+export function useRealtimeScouting(onChange: () => void, options?: MssqlPollOptions) {
+  const poll = options?.enabled ?? true;
+  useRealtimePostgres("scouting", SCOUTING_TABLES, onChange, {
+    disabled: hasMssqlEnv() || !poll,
+  });
+  useMssqlPoll(onChange, { enabled: poll, intervalMs: options?.intervalMs });
 }

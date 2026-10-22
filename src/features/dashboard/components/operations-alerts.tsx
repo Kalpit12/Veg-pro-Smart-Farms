@@ -37,8 +37,10 @@ function formatAlertMessage(message: string, audience: "manager" | "admin") {
 
 export function OperationsAlerts({
   audience = "admin",
+  liveUpdates = true,
 }: {
   audience?: "manager" | "admin";
+  liveUpdates?: boolean;
 }) {
   const { toast } = useToast();
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -79,7 +81,7 @@ export function OperationsAlerts({
     void refresh();
   }, [refresh]);
 
-  useRealtimeAlerts(refresh);
+  useRealtimeAlerts(refresh, { enabled: liveUpdates });
 
   if (loading) {
     return (

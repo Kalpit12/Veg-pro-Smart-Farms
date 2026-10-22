@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { MssqlPollOptions } from "@/hooks/use-mssql-poll";
 
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { hasConfiguredBackend } from "@/lib/data-backend";
@@ -148,9 +150,10 @@ function fromRemoteRound(r: ScoutingRoundRow): UnifiedScoutingRound {
   };
 }
 
-export function useScoutingRounds(limit = 80) {
+export function useScoutingRounds(limit = 80, options?: Pick<MssqlPollOptions, "enabled">) {
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const [remote, setRemote] = useState<UnifiedScoutingRound[]>([]);
+  const poll = options?.enabled ?? true;
 
   const load = useCallback(async () => {
     if (!hasConfiguredBackend()) return;
@@ -162,7 +165,7 @@ export function useScoutingRounds(limit = 80) {
     void load();
   }, [load]);
 
-  useRealtimeScouting(load);
+  useRealtimeScouting(load, { enabled: poll });
 
   return {
     rounds: hasConfiguredBackend() ? remote : demoRounds.map(fromDemoRound),
@@ -170,29 +173,34 @@ export function useScoutingRounds(limit = 80) {
   };
 }
 
-export function useScoutingData(days = 30) {
+export function useScoutingData(days = 30, options?: Pick<MssqlPollOptions, "enabled">) {
   const demoRecords = useScoutingStore((s) => s.demoRecords);
   const [remote, setRemote] = useState<UnifiedScoutingRecord[]>([]);
   const [loading, setLoading] = useState(hasConfiguredBackend());
+  const initialLoad = useRef(true);
+  const poll = options?.enabled ?? true;
 
   const load = useCallback(async () => {
     if (!hasConfiguredBackend()) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (initialLoad.current) {
+      setLoading(true);
+    }
     const since = new Date();
     since.setDate(since.getDate() - days);
     const { data } = await listScoutingRecordsSince(since);
     setRemote((data as ScoutingRecordRow[] | null)?.map(fromRemote) ?? []);
     setLoading(false);
+    initialLoad.current = false;
   }, [days]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useRealtimeScouting(load);
+  useRealtimeScouting(load, { enabled: poll });
 
   const records = hasConfiguredBackend()
     ? remote
