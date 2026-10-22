@@ -74,30 +74,35 @@ export async function mssqlReportInfestation(input: ReportInfestationInput) {
 }
 
 async function listHotspotsQuery(where: string, params: Record<string, unknown>, limit: number) {
-  const session = await requireServerSession();
-  const scope = await sqlSupervisorSiteFilter(
-    session.role,
-    session.id,
-    "h.greenhouse_id",
-    "h.farm_id",
-  );
-  const pool = await getMssqlPool();
-  const req = pool.request().input("limit", sql.Int, limit);
-  for (const [k, v] of Object.entries(params)) {
-    if (v instanceof Date) req.input(k, sql.DateTime2, v);
-    else if (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)) req.input(k, sql.UniqueIdentifier, v);
-    else req.input(k, sql.NVarChar(200), String(v));
+  try {
+    const session = await requireServerSession();
+    const scope = await sqlSupervisorSiteFilter(
+      session.role,
+      session.id,
+      "h.greenhouse_id",
+      "h.farm_id",
+    );
+    const pool = await getMssqlPool();
+    const req = pool.request().input("limit", sql.Int, limit);
+    for (const [k, v] of Object.entries(params)) {
+      if (v instanceof Date) req.input(k, sql.DateTime2, v);
+      else if (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v))
+        req.input(k, sql.UniqueIdentifier, v);
+      else req.input(k, sql.NVarChar(200), String(v));
+    }
+    const result = await req.query(`
+      SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
+      FROM dbo.infestation_hotspots h
+      LEFT JOIN dbo.farms f ON f.id = h.farm_id
+      LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
+      LEFT JOIN dbo.users u ON u.id = h.reported_by
+      ${where}${scope}
+      ORDER BY h.created_at DESC
+    `);
+    return ok(result.recordset.map(mapHotspot));
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Could not load hotspots.");
   }
-  const result = await req.query(`
-    SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
-    FROM dbo.infestation_hotspots h
-    LEFT JOIN dbo.farms f ON f.id = h.farm_id
-    LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
-    LEFT JOIN dbo.users u ON u.id = h.reported_by
-    ${where}${scope}
-    ORDER BY h.created_at DESC
-  `);
-  return ok(result.recordset.map(mapHotspot));
 }
 
 export async function mssqlListHotspots(limit = 200) {
@@ -124,24 +129,28 @@ export async function mssqlListHotspotsForHistory(options?: {
 }
 
 export async function mssqlListActiveHotspots(limit = 50) {
-  const session = await requireServerSession();
-  const scope = await sqlSupervisorSiteFilter(
-    session.role,
-    session.id,
-    "h.greenhouse_id",
-    "h.farm_id",
-  );
-  const pool = await getMssqlPool();
-  const result = await pool.request().input("limit", sql.Int, limit).query(`
-    SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
-    FROM dbo.infestation_hotspots h
-    LEFT JOIN dbo.farms f ON f.id = h.farm_id
-    LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
-    LEFT JOIN dbo.users u ON u.id = h.reported_by
-    WHERE h.status = 'active'${scope}
-    ORDER BY h.severity DESC, h.created_at DESC
-  `);
-  return ok(result.recordset.map(mapHotspot));
+  try {
+    const session = await requireServerSession();
+    const scope = await sqlSupervisorSiteFilter(
+      session.role,
+      session.id,
+      "h.greenhouse_id",
+      "h.farm_id",
+    );
+    const pool = await getMssqlPool();
+    const result = await pool.request().input("limit", sql.Int, limit).query(`
+      SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
+      FROM dbo.infestation_hotspots h
+      LEFT JOIN dbo.farms f ON f.id = h.farm_id
+      LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
+      LEFT JOIN dbo.users u ON u.id = h.reported_by
+      WHERE h.status = 'active'${scope}
+      ORDER BY h.severity DESC, h.created_at DESC
+    `);
+    return ok(result.recordset.map(mapHotspot));
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Could not load active hotspots.");
+  }
 }
 
 export async function mssqlGetHotspotById(id: string) {
@@ -563,29 +572,51 @@ export async function mssqlGetAdminDailyAnalyticsRaw() {
   });
 }
 
+async function mssqlCountOrZero(query: string, params?: { since?: Date }): Promise<number> {
+  try {
+    const pool = await getMssqlPool();
+    const req = pool.request();
+    if (params?.since) req.input("since", sql.DateTime2, params.since);
+    const result = await req.query(query);
+    return result.recordset[0].c as number;
+  } catch {
+    return 0;
+  }
+}
+
 export async function mssqlGetDashboardKpis() {
-  await requireServerSession();
-  const pool = await getMssqlPool();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const [farms, alerts, scouting, hotspots, sprays, workers] = await Promise.all([
-    pool.request().query(`SELECT COUNT(*) AS c FROM dbo.farms`),
-    pool.request().query(`SELECT COUNT(*) AS c FROM dbo.alerts WHERE status = 'open'`),
-    pool
-      .request()
-      .input("since", sql.DateTime2, today)
-      .query(`SELECT COUNT(*) AS c FROM dbo.scouting_records WHERE recorded_at >= @since`),
-    mssqlGetHotspotKpis(),
-    mssqlGetSpraysTodayCount(),
-    mssqlGetWorkersInFieldCount(),
-  ]);
-  return ok({
-    farms: farms.recordset[0].c as number,
-    openAlerts: alerts.recordset[0].c as number,
-    scoutingStopsToday: scouting.recordset[0].c as number,
-    activeHotspots: hotspots.activeHotspots,
-    severeHotspots: hotspots.severeHotspots,
-    spraysToday: sprays.data?.count ?? 0,
-    workersInField: workers.data?.count ?? 0,
-  });
+  try {
+    await requireServerSession();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [farms, openAlerts, scoutingStopsToday, hotspots, sprays, workers] =
+      await Promise.all([
+        mssqlCountOrZero(`SELECT COUNT(*) AS c FROM dbo.farms`),
+        mssqlCountOrZero(`SELECT COUNT(*) AS c FROM dbo.alerts WHERE status = 'open'`),
+        mssqlCountOrZero(
+          `SELECT COUNT(*) AS c FROM dbo.scouting_records WHERE recorded_at >= @since`,
+          { since: today },
+        ),
+        mssqlGetHotspotKpis().catch(() => ({
+          activeHotspots: 0,
+          severeHotspots: 0,
+          resolvedToday: 0,
+        })),
+        mssqlGetSpraysTodayCount(),
+        mssqlGetWorkersInFieldCount(),
+      ]);
+
+    return ok({
+      farms,
+      openAlerts,
+      scoutingStopsToday,
+      activeHotspots: hotspots.activeHotspots,
+      severeHotspots: hotspots.severeHotspots,
+      spraysToday: sprays.error ? 0 : (sprays.data?.count ?? 0),
+      workersInField: workers.error ? 0 : (workers.data?.count ?? 0),
+    });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Could not load dashboard KPIs.");
+  }
 }

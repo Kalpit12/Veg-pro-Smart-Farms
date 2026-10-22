@@ -11,7 +11,12 @@ export async function redirectIfInactiveUser() {
   const session = await getSessionFromCookies();
   if (!session) return;
 
-  const active = await isMssqlUserActive(session.sub);
+  let active = true;
+  try {
+    active = await isMssqlUserActive(session.sub);
+  } catch {
+    return;
+  }
   if (active) return;
 
   await clearSessionCookie();

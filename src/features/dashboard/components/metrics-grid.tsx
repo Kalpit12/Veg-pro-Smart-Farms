@@ -54,7 +54,9 @@ export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "
         description:
           e instanceof Error
             ? e.message
-            : "Connect Supabase and run migrations.",
+            : hasConfiguredBackend()
+              ? "Database query failed. Check server logs and SQL migrations."
+              : "Connect Supabase and run migrations.",
         tone: "error",
       });
     } finally {

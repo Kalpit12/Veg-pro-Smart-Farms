@@ -1,18 +1,26 @@
 import type { Role } from "@/types/db";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
+import { isMssqlMissingObjectError } from "@/lib/mssql/sql-errors";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function listSupervisorGreenhouseIds(userId: string): Promise<string[]> {
-  const pool = await getMssqlPool();
-  const result = await pool
-    .request()
-    .input("user_id", sql.UniqueIdentifier, userId)
-    .query(`
-      SELECT greenhouse_id FROM dbo.supervisor_greenhouse_access WHERE user_id = @user_id
-    `);
-  return result.recordset.map((r) => String(r.greenhouse_id));
+  try {
+    const pool = await getMssqlPool();
+    const result = await pool
+      .request()
+      .input("user_id", sql.UniqueIdentifier, userId)
+      .query(`
+        SELECT greenhouse_id FROM dbo.supervisor_greenhouse_access WHERE user_id = @user_id
+      `);
+    return result.recordset.map((r) => String(r.greenhouse_id));
+  } catch (e) {
+    if (isMssqlMissingObjectError(e, "supervisor_greenhouse_access")) {
+      return [];
+    }
+    throw e;
+  }
 }
 
 /** SQL AND-clause fragment for supervisor-scoped reads (empty for admin/worker). */

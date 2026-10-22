@@ -5,6 +5,7 @@ import { hasSupabaseEnv, hasSupabaseServiceRole } from "@/lib/supabase/config";
 import { resolveUserRole } from "@/lib/auth/resolve-user-role";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
+import { isMssqlMissingObjectError } from "@/lib/mssql/sql-errors";
 
 export type FarmGreenhouseCatalogItem = {
   farmId: string;
@@ -359,6 +360,9 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
 
     return { data: groupGreenhouseRows(rows), error: null };
   } catch (e) {
+    if (isMssqlMissingObjectError(e, "supervisor_greenhouse_access")) {
+      return { data: [], error: null };
+    }
     return {
       data: [],
       error: { message: e instanceof Error ? e.message : "Could not load assigned sites." },
