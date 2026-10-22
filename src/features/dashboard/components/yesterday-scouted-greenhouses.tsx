@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ChevronRight, Leaf } from "lucide-react";
 
@@ -10,12 +10,19 @@ import { ScoutingRoundReportDetail } from "@/features/dashboard/components/scout
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { formatStarGreenhouseLabel } from "@/lib/bemack-master-data";
 import {
+  calendarDayWindow,
+  matchesManagerDashboardFilters,
+} from "@/lib/manager-dashboard-filters";
+import {
+  calendarDayLabel,
   dedupeByGreenhouse,
+  filterRoundsStartedOnDay,
   filterRoundsStartedYesterday,
   yesterdayLabel,
   yesterdayWindow,
   type YesterdayScoutRound,
 } from "@/lib/scouting-yesterday";
+import { useManagerFilterSelection } from "@/store/manager-dashboard-filter-store";
 import { formatDistance, formatDuration } from "@/lib/route-metrics";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
@@ -30,16 +37,19 @@ type Props = {
   scope?: "all" | "assigned";
   scoutingBasePath?: string;
   liveUpdates?: boolean;
+  managerDashboardFilters?: boolean;
 };
 
 export function YesterdayScoutedGreenhouses({
   scope = "all",
   scoutingBasePath = "/admin/scouting",
   liveUpdates = true,
+  managerDashboardFilters = false,
 }: Props) {
+  const managerFilters = useManagerFilterSelection();
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const [loading, setLoading] = useState(true);
-  const [rounds, setRounds] = useState<YesterdayScoutRound[]>([]);
+  const [rawRounds, setRawRounds] = useState<YesterdayScoutRound[]>([]);
   const [selected, setSelected] = useState<YesterdayScoutRound | null>(null);
   const [assignedGreenhouseIds, setAssignedGreenhouseIds] = useState<
     Set<string> | null
@@ -67,35 +77,67 @@ export function YesterdayScoutedGreenhouses({
     [scope, assignedGreenhouseIds],
   );
 
+  const applyManagerFilters = useCallback(
+    (list: YesterdayScoutRound[]) => {
+      if (!managerDashboardFilters) return list;
+      const { farmId, greenhouseId, variety, dateYmd, sites } = managerFilters;
+      return list.filter((round) => {
+        const farm = sites.find((f) => f.farmName === round.farmName);
+        return matchesManagerDashboardFilters(sites, {
+          farmId,
+          greenhouseId,
+          variety,
+          dateYmd,
+        }, {
+          farmId: farm?.farmId,
+          greenhouseId: round.greenhouseId,
+          greenhouseName: round.greenhouseName,
+          createdAt: round.startedAt,
+        });
+      });
+    },
+    [managerDashboardFilters, managerFilters],
+  );
+
+  const rounds = useMemo(
+    () => applyManagerFilters(rawRounds),
+    [rawRounds, applyManagerFilters],
+  );
+
   const load = useCallback(async () => {
     if (scope === "assigned" && assignedGreenhouseIds === null) return;
     if (initialLoad.current) {
       setLoading(true);
     }
+    const dateYmd = managerDashboardFilters ? managerFilters.dateYmd : null;
+    const dayFilter = (list: YesterdayScoutRound[]) =>
+      dateYmd ? filterRoundsStartedOnDay(list, dateYmd) : filterRoundsStartedYesterday(list);
+
     if (isOfflineDemo()) {
-      const list = filterByScope(
-        dedupeByGreenhouse(filterRoundsStartedYesterday(demoRounds)),
-      );
-      setRounds(list);
+      setRawRounds(filterByScope(dedupeByGreenhouse(dayFilter(demoRounds))));
       setLoading(false);
       return;
     }
-    const { from, to } = yesterdayWindow();
+    const { from, to } = dateYmd ? calendarDayWindow(dateYmd) : yesterdayWindow();
     const { data, error } = await listScoutingRoundsBetween(from, to);
     if (error || !data?.length) {
       const fallback = await listScoutingRounds(100);
-      const list = filterByScope(
-        dedupeByGreenhouse(filterRoundsStartedYesterday(fallback.data ?? [])),
+      setRawRounds(
+        filterByScope(dedupeByGreenhouse(dayFilter(fallback.data ?? []))),
       );
-      setRounds(list);
     } else {
-      setRounds(
-        filterByScope(dedupeByGreenhouse(filterRoundsStartedYesterday(data))),
-      );
+      setRawRounds(filterByScope(dedupeByGreenhouse(dayFilter(data))));
     }
     setLoading(false);
     initialLoad.current = false;
-  }, [demoRounds, scope, assignedGreenhouseIds, filterByScope]);
+  }, [
+    demoRounds,
+    scope,
+    assignedGreenhouseIds,
+    filterByScope,
+    managerDashboardFilters,
+    managerFilters.dateYmd,
+  ]);
 
   useEffect(() => {
     void load();
@@ -124,9 +166,13 @@ export function YesterdayScoutedGreenhouses({
     <section className="glass-card space-y-4 rounded-2xl p-4 sm:p-5">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">Scouted yesterday</h2>
+          <h2 className="text-lg font-semibold">
+            {managerDashboardFilters ? "Scouting" : "Scouted yesterday"}
+          </h2>
           <p className="text-sm text-muted-foreground">
-            {yesterdayLabel()} — tap a greenhouse for the full scouting report.
+            {managerDashboardFilters
+              ? `${calendarDayLabel(managerFilters.dateYmd)} — tap a greenhouse for the full report.`
+              : `${yesterdayLabel()} — tap a greenhouse for the full scouting report.`}
             {scope === "assigned" ? " Only your assigned sites are shown." : null}
           </p>
         </div>
@@ -145,7 +191,9 @@ export function YesterdayScoutedGreenhouses({
         <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           {scope === "assigned" && assignedGreenhouseIds?.size === 0
             ? "No greenhouses are assigned to your account yet."
-            : "No scouting rounds started yesterday for your sites. Completed walks will appear here each morning."}
+            : managerDashboardFilters
+              ? "No scouting rounds for this farm, greenhouse, variety, and date."
+              : "No scouting rounds started yesterday for your sites. Completed walks will appear here each morning."}
         </p>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

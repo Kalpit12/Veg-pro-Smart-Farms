@@ -4,6 +4,8 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-filter-apply";
+
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDemoRefresh } from "@/hooks/use-demo-refresh";
@@ -153,11 +155,16 @@ export function LiveActivityFeed({
   variant = "admin",
   className,
   liveUpdates = true,
+  managerDashboardFilters = false,
 }: {
   variant?: "manager" | "admin";
   className?: string;
   liveUpdates?: boolean;
+  managerDashboardFilters?: boolean;
 }) {
+  const { matches, sites } = useManagerDashboardFilterApply(
+    managerDashboardFilters && variant === "manager",
+  );
   const [items, setItems] = useState<FeedItem[]>([]);
   const [historyItems, setHistoryItems] = useState<FeedItem[]>([]);
   const [tab, setTab] = useState<"live" | "history">("live");
@@ -245,10 +252,23 @@ export function LiveActivityFeed({
 
   useRealtimeFieldFeed(refresh, { enabled: liveUpdates });
 
+  const filterFeedItem = useCallback(
+    (activity: FeedItem) => {
+      if (!managerDashboardFilters || variant !== "manager") return true;
+      const farm = sites.find((f) => f.farmName === activity.farms?.name);
+      return matches({
+        farmId: farm?.farmId,
+        greenhouseName: activity.greenhouses?.name,
+        createdAt: activity.created_at,
+      });
+    },
+    [managerDashboardFilters, variant, matches, sites],
+  );
+
   const displayItems = useMemo(() => {
-    if (variant === "manager") return items;
-    return tab === "live" ? items : historyItems;
-  }, [variant, tab, items, historyItems]);
+    const base = variant === "manager" ? items : tab === "live" ? items : historyItems;
+    return base.filter(filterFeedItem);
+  }, [variant, tab, items, historyItems, filterFeedItem]);
 
   const historyHref = variant === "manager" ? "/manager/history" : null;
 

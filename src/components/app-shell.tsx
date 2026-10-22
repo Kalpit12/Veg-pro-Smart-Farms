@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 import { LogoutButton } from "@/components/auth/logout-button";
-import { ManagerAssignedSites } from "@/features/manager/manager-assigned-sites";
+import { ManagerWorkspaceHeader } from "@/features/manager/manager-workspace-header";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -250,11 +250,16 @@ export function AppShell({
                 {sidebarOpen ? <X className="size-4" /> : <Menu className="size-4" />}
               </Button>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{workspace.title}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground sm:text-sm">
-                  {workspace.description}
-                </p>
-                {roleMode === "manager" ? <ManagerAssignedSites /> : null}
+                {roleMode === "manager" ? (
+                  <ManagerWorkspaceHeader />
+                ) : (
+                  <>
+                    <p className="text-sm font-medium">{workspace.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground sm:text-sm">
+                      {workspace.description}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>

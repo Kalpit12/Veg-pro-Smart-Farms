@@ -38,9 +38,11 @@ function formatAlertMessage(message: string, audience: "manager" | "admin") {
 export function OperationsAlerts({
   audience = "admin",
   liveUpdates = true,
+  managerDashboardFilters: _managerDashboardFilters = false,
 }: {
   audience?: "manager" | "admin";
   liveUpdates?: boolean;
+  managerDashboardFilters?: boolean;
 }) {
   const { toast } = useToast();
   const [alerts, setAlerts] = useState<AlertItem[]>([]);

@@ -1,5 +1,7 @@
 import { endOfYesterday, format, startOfYesterday } from "date-fns";
 
+import { calendarDayWindow, isOnCalendarDay } from "@/lib/manager-dashboard-filters";
+
 import type { DemoScoutingRound } from "@/store/scouting-store";
 import type { ScoutingRoundRow } from "@/services/supabase/scouting-round-service";
 
@@ -30,6 +32,18 @@ export function isWithinYesterday(iso: string) {
   const t = new Date(iso).getTime();
   const { from, to } = yesterdayWindow();
   return t >= from.getTime() && t <= to.getTime();
+}
+
+export function filterRoundsStartedOnDay(
+  rounds: YesterdayScoutRound[],
+  dateYmd: string,
+) {
+  return rounds.filter((r) => isOnCalendarDay(r.startedAt, dateYmd));
+}
+
+export function calendarDayLabel(dateYmd: string) {
+  const { from } = calendarDayWindow(dateYmd);
+  return format(from, "EEEE, MMM d");
 }
 
 export function roundToYesterdaySummary(

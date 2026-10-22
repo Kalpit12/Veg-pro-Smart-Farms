@@ -11,7 +11,7 @@ import { isSqlGuid } from "@/lib/uuid";
 export type FarmGreenhouseCatalogItem = {
   farmId: string;
   farmName: string;
-  greenhouses: { id: string; name: string }[];
+  greenhouses: { id: string; name: string; cropType?: string | null }[];
 };
 
 const UUID_RE =
@@ -71,6 +71,7 @@ export async function listFarmsGreenhousesCatalog(): Promise<{
         farm.greenhouses.push({
           id: String(row.greenhouse_id),
           name: row.greenhouse_name as string,
+          cropType: (row as { greenhouse_crop_type?: string }).greenhouse_crop_type ?? null,
         });
       }
       return { data: [...byFarm.values()], error: null };
@@ -242,7 +243,13 @@ export async function insertSupervisorGreenhouseAccessMssql(
 }
 
 function groupGreenhouseRows(
-  rows: { farm_id: string; farm_name: string; greenhouse_id: string; greenhouse_name: string }[],
+  rows: {
+    farm_id: string;
+    farm_name: string;
+    greenhouse_id: string;
+    greenhouse_name: string;
+    greenhouse_crop_type?: string | null;
+  }[],
 ): FarmGreenhouseCatalogItem[] {
   const byFarm = new Map<string, FarmGreenhouseCatalogItem>();
   for (const row of rows) {
@@ -255,7 +262,11 @@ function groupGreenhouseRows(
       };
       byFarm.set(row.farm_id, farm);
     }
-    farm.greenhouses.push({ id: row.greenhouse_id, name: row.greenhouse_name });
+    farm.greenhouses.push({
+      id: row.greenhouse_id,
+      name: row.greenhouse_name,
+      cropType: row.greenhouse_crop_type ?? null,
+    });
   }
   for (const farm of byFarm.values()) {
     farm.greenhouses.sort((a, b) => a.name.localeCompare(b.name));
@@ -284,7 +295,8 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
         .request()
         .input("user_id", sql.UniqueIdentifier, session.id)
         .query(`
-          SELECT f.id AS farm_id, f.name AS farm_name, g.id AS greenhouse_id, g.name AS greenhouse_name
+          SELECT f.id AS farm_id, f.name AS farm_name, g.id AS greenhouse_id, g.name AS greenhouse_name,
+                 g.crop_type AS greenhouse_crop_type
           FROM dbo.supervisor_greenhouse_access a
           INNER JOIN dbo.greenhouses g ON g.id = a.greenhouse_id
           INNER JOIN dbo.farms f ON f.id = g.farm_id
@@ -296,6 +308,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
         farm_name: r.farm_name as string,
         greenhouse_id: String(r.greenhouse_id),
         greenhouse_name: r.greenhouse_name as string,
+        greenhouse_crop_type: (r.greenhouse_crop_type as string) ?? null,
       }));
       return { data: groupGreenhouseRows(rows), error: null };
     }
@@ -320,7 +333,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
     const { data, error } = await supabase
       .from("supervisor_greenhouse_access")
       .select(
-        "greenhouse_id, greenhouses(id, name, farm_id, farms(id, name))",
+        "greenhouse_id, greenhouses(id, name, crop_type, farm_id, farms(id, name))",
       )
       .eq("user_id", user.id);
 
@@ -336,6 +349,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
       farm_name: string;
       greenhouse_id: string;
       greenhouse_name: string;
+      greenhouse_crop_type?: string | null;
     }[] = [];
 
     for (const row of data ?? []) {
@@ -343,6 +357,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
         | {
             id: string;
             name: string;
+            crop_type?: string | null;
             farm_id: string;
             farms: { id: string; name: string } | { id: string; name: string }[] | null;
           }
@@ -356,6 +371,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
         farm_name: farm.name,
         greenhouse_id: gh.id,
         greenhouse_name: gh.name,
+        greenhouse_crop_type: gh.crop_type ?? null,
       });
     }
 

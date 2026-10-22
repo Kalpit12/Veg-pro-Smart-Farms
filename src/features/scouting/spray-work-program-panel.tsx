@@ -12,6 +12,7 @@ import { useHotspotResolutionRefs } from "@/hooks/use-hotspot-resolution";
 import { useScoutingData, toSprayInput } from "@/hooks/use-scouting-data";
 import { filterUnresolvedScoutingRecords } from "@/lib/issue-resolution";
 import { excelFilename, sprayProgramToExcel } from "@/lib/admin-export-mappers";
+import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-filter-apply";
 import { cn } from "@/lib/utils";
 
 function priorityBadge(p: SprayPriority) {
@@ -24,19 +25,32 @@ export function SprayWorkProgramPanel({
   compact,
   basePath = "/manager",
   liveUpdates = true,
+  managerDashboardFilters = false,
 }: {
   compact?: boolean;
   basePath?: "/manager" | "/admin";
   /** When false, loads once (admin dashboard — avoids 12s scouting poll). */
   liveUpdates?: boolean;
+  managerDashboardFilters?: boolean;
 }) {
+  const { matches } = useManagerDashboardFilterApply(managerDashboardFilters);
   const poll = { enabled: liveUpdates };
   const { records, loading } = useScoutingData(7, poll);
   const resolutionHotspots = useHotspotResolutionRefs(poll);
   const program = useMemo(() => {
-    const openRecords = filterUnresolvedScoutingRecords(records, resolutionHotspots);
+    const scoped = managerDashboardFilters
+      ? records.filter((r) =>
+          matches({
+            greenhouseId: r.greenhouseId,
+            greenhouseName: r.greenhouseName,
+            cropType: r.variety,
+            createdAt: r.recordedAt,
+          }),
+        )
+      : records;
+    const openRecords = filterUnresolvedScoutingRecords(scoped, resolutionHotspots);
     return buildSprayWorkProgram(openRecords.map(toSprayInput));
-  }, [records, resolutionHotspots]);
+  }, [records, resolutionHotspots, managerDashboardFilters, matches]);
   const urgent = program.filter((p) => p.priority === "urgent");
   const scheduled = program.filter((p) => p.priority === "scheduled");
   const exportRows = sprayProgramToExcel(program);

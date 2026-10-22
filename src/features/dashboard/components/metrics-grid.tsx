@@ -6,20 +6,26 @@ import { useScoutingData } from "@/hooks/use-scouting-data";
 import { useCallback, useEffect, useState } from "react";
 
 import { MetricCard } from "@/features/dashboard/components/metric-card";
+import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-filter-apply";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import { useRealtimePositions } from "@/hooks/use-realtime-positions";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoKpis } from "@/lib/demo-field-data";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { getDashboardKpis } from "@/services/supabase/dashboard-service";
+import { listActiveHotspots } from "@/services/supabase/infestation-service";
+import { listSprays } from "@/services/supabase/spray-service";
 
 export function MetricsGrid({
   audience = "manager",
   liveUpdates = true,
+  managerDashboardFilters = false,
 }: {
   audience?: "manager" | "admin";
   liveUpdates?: boolean;
+  managerDashboardFilters?: boolean;
 }) {
+  const { matches } = useManagerDashboardFilterApply(managerDashboardFilters);
   const pollOpts = { enabled: liveUpdates };
   const { records: scoutingRecords } = useScoutingData(1, pollOpts);
   const [kpis, setKpis] = useState({
@@ -47,13 +53,66 @@ export function MetricsGrid({
 
     try {
       const next = await getDashboardKpis();
-      setKpis({
-        activeHotspots: next.activeHotspots,
-        spraysToday: next.spraysToday,
-        workersInField: next.workersInField,
-        severeHotspots: next.severeHotspots,
-        scoutingStopsToday: next.scoutingStopsToday,
-      });
+      if (managerDashboardFilters && audience === "manager") {
+        const [hotRes, sprayRes] = await Promise.all([
+          listActiveHotspots(100),
+          listSprays(100),
+        ]);
+        const hotspots = (hotRes.data ?? []).filter((h) => {
+          const row = h as {
+            farm_id: string;
+            greenhouse_id: string | null;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            severity: number;
+            created_at: string;
+          };
+          return matches({
+            farmId: row.farm_id,
+            greenhouseId: row.greenhouse_id,
+            greenhouseName: row.greenhouses?.name,
+            cropType: row.greenhouses?.crop_type ?? null,
+            createdAt: row.created_at,
+          });
+        });
+        const sprays = (sprayRes.data ?? []).filter((s) => {
+          const row = s as {
+            farm_id: string;
+            greenhouse_id: string | null;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            created_at: string;
+          };
+          return matches({
+            farmId: row.farm_id,
+            greenhouseId: row.greenhouse_id,
+            greenhouseName: row.greenhouses?.name,
+            cropType: row.greenhouses?.crop_type ?? null,
+            createdAt: row.created_at,
+          });
+        });
+        const stops = scoutingRecords.filter((r) =>
+          matches({
+            greenhouseId: r.greenhouseId,
+            greenhouseName: r.greenhouseName,
+            cropType: r.variety,
+            createdAt: r.recordedAt,
+          }),
+        );
+        setKpis({
+          activeHotspots: hotspots.length,
+          severeHotspots: hotspots.filter((h) => (h as { severity: number }).severity >= 4).length,
+          spraysToday: sprays.length,
+          workersInField: next.workersInField,
+          scoutingStopsToday: stops.length,
+        });
+      } else {
+        setKpis({
+          activeHotspots: next.activeHotspots,
+          spraysToday: next.spraysToday,
+          workersInField: next.workersInField,
+          severeHotspots: next.severeHotspots,
+          scoutingStopsToday: next.scoutingStopsToday,
+        });
+      }
     } catch (e) {
       toast({
         title: "Dashboard not ready",
@@ -68,7 +127,7 @@ export function MetricsGrid({
     } finally {
       setLoading(false);
     }
-  }, [toast, scoutingRecords]);
+  }, [toast, scoutingRecords, managerDashboardFilters, audience, matches]);
 
   useEffect(() => {
     void refresh();
@@ -112,7 +171,7 @@ export function MetricsGrid({
       href: mapHref,
     },
     {
-      label: "Sprays today",
+      label: managerDashboardFilters ? "Sprays" : "Sprays today",
       value: String(kpis.spraysToday),
       icon: Droplets,
       tone: "success" as const,

@@ -155,6 +155,6 @@ export async function getHotspotKpis() {
 
 export type HotspotRow = InfestationHotspot & {
   farms?: { name?: string } | null;
-  greenhouses?: { name?: string } | null;
+  greenhouses?: { name?: string; crop_type?: string } | null;
   users?: { full_name?: string } | null;
 };

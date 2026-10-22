@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Bug, Droplets } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
 import { useScanStore } from "@/store/scan-store";
+import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-filter-apply";
 import { cn } from "@/lib/utils";
 
 function queueHotspotForSpray(hotspot: HotspotRow) {
@@ -47,30 +48,33 @@ function queueHotspotForSpray(hotspot: HotspotRow) {
 type PendingInfestationQueueProps = {
   compact?: boolean;
   className?: string;
+  managerDashboardFilters?: boolean;
 };
 
 export function PendingInfestationQueue({
   compact = false,
   className,
+  managerDashboardFilters = false,
 }: PendingInfestationQueueProps) {
+  const { matches } = useManagerDashboardFilterApply(managerDashboardFilters);
   const router = useRouter();
   const { toast } = useToast();
   const { tick } = useDemoRefresh();
   const demoHotspots = useFieldOpsStore((s) => s.demoHotspots);
-  const [rows, setRows] = useState<HotspotRow[]>([]);
+  const [allRows, setAllRows] = useState<HotspotRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (isOfflineDemo()) {
-      setRows(demoHotspots.filter((h) => h.status === "active"));
+      setAllRows(demoHotspots.filter((h) => h.status === "active"));
       setLoading(false);
       return;
     }
 
     try {
-      const { data, error } = await listActiveHotspots(20);
+      const { data, error } = await listActiveHotspots(managerDashboardFilters ? 100 : 20);
       if (error) throw error;
-      setRows((data as HotspotRow[]) ?? []);
+      setAllRows((data as HotspotRow[]) ?? []);
     } catch (e) {
       toast({
         title: "Could not load infestation reports",
@@ -80,13 +84,26 @@ export function PendingInfestationQueue({
     } finally {
       setLoading(false);
     }
-  }, [demoHotspots, toast]);
+  }, [demoHotspots, toast, managerDashboardFilters]);
 
   useEffect(() => {
     void refresh();
   }, [refresh, tick]);
 
   useRealtimeHotspots(refresh);
+
+  const rows = useMemo(() => {
+    if (!managerDashboardFilters) return allRows;
+    return allRows.filter((row) =>
+      matches({
+        farmId: row.farm_id,
+        greenhouseId: row.greenhouse_id,
+        greenhouseName: row.greenhouses?.name,
+        cropType: row.greenhouses?.crop_type ?? null,
+        createdAt: row.created_at,
+      }),
+    );
+  }, [allRows, managerDashboardFilters, matches]);
 
   const handleLogSpray = (hotspot: HotspotRow) => {
     queueHotspotForSpray(hotspot);
