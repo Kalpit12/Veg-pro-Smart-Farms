@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtimeFieldFeed } from "@/hooks/use-realtime-field-feed";
 import { useToast } from "@/hooks/use-toast";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { getCurrentUserProfileAction } from "@/features/auth/sign-in-action";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useScanStore } from "@/store/scan-store";
@@ -19,7 +20,6 @@ import {
 } from "@/store/scouting-session-store";
 import { pendingWalkFromSession } from "@/lib/scouting-walk-pending";
 import { useScoutingStore } from "@/store/scouting-store";
-import { getCurrentUser } from "@/services/supabase/auth-service";
 import { listHotspots } from "@/services/supabase/infestation-service";
 import { listScoutingRecords } from "@/services/supabase/scouting-service";
 
@@ -31,20 +31,14 @@ type FieldAction = {
   created_at: string;
 };
 
-function firstNameFromUser(user: {
+function firstNameFromProfile(profile: {
+  full_name?: string | null;
   email?: string | null;
-  user_metadata?: Record<string, unknown>;
 } | null) {
-  if (!user) return null;
-  const meta = user.user_metadata ?? {};
-  const raw =
-    (typeof meta.full_name === "string" && meta.full_name) ||
-    (typeof meta.name === "string" && meta.name) ||
-    (typeof meta.first_name === "string" && meta.first_name) ||
-    "";
-  const name = raw.trim().split(/\s+/)[0];
-  if (name) return name;
-  const email = user.email?.split("@")[0];
+  if (!profile) return null;
+  const fromFull = profile.full_name?.trim().split(/\s+/)[0];
+  if (fromFull) return fromFull;
+  const email = profile.email?.split("@")[0];
   return email || null;
 }
 
@@ -67,7 +61,7 @@ export function WorkerDashboard() {
     walkEngaged,
     session,
     demoRoundId,
-    hasSupabaseEnv(),
+    hasConfiguredBackend(),
   );
   const pendingWalk = !walkEngaged ? pendingWalkFromSession(session) : null;
   const walkGreenhouse =
@@ -85,7 +79,7 @@ export function WorkerDashboard() {
   const pendingSync = queuedWrites.length;
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setWorkerName("Worker");
       const reports: FieldAction[] = demoHotspots.slice(0, 5).map((h) => ({
         id: h.id,
@@ -113,20 +107,21 @@ export function WorkerDashboard() {
     }
 
     try {
-      const user = await getCurrentUser();
-      if (!user) return;
-      setWorkerName(firstNameFromUser(user));
+      const profile = await getCurrentUserProfileAction();
+      if (!profile) return;
+      setWorkerName(firstNameFromProfile(profile));
+      const userId = profile.id;
 
       const [hotspotsRes, scoutingRes] = await Promise.all([
-        listHotspots(10),
-        listScoutingRecords(10),
+        listHotspots(50),
+        listScoutingRecords(20),
       ]);
 
       if (hotspotsRes.error) throw hotspotsRes.error;
       if (scoutingRes.error) throw scoutingRes.error;
 
       const reports: FieldAction[] = (hotspotsRes.data ?? [])
-        .filter((h) => (h as { reported_by: string }).reported_by === user.id)
+        .filter((h) => (h as { reported_by: string }).reported_by === userId)
         .map((h) => {
           const row = h as {
             id: string;
@@ -144,7 +139,7 @@ export function WorkerDashboard() {
         });
 
       const scouts: FieldAction[] = (scoutingRes.data ?? [])
-        .filter((r) => (r as { scout_id: string }).scout_id === user.id)
+        .filter((r) => (r as { scout_id: string }).scout_id === userId)
         .map((r) => {
           const row = r as {
             id: string;

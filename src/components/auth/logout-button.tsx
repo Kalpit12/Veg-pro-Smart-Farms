@@ -8,7 +8,7 @@ import type { VariantProps } from "class-variance-authority";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatWorkerLogoutMessage } from "@/lib/worker-logout-alert";
-import { hasSupabaseEnv } from "@/lib/data-backend";
+import { isOfflineDemo } from "@/lib/data-backend";
 import { signOutAction } from "@/features/auth/sign-in-action";
 import { notifyAdminWorkerLogout } from "@/services/worker-logout-notify";
 import { useScanStore } from "@/store/scan-store";
@@ -52,7 +52,7 @@ export function LogoutButton({
         const context = await notifyAdminWorkerLogout();
         const summary = formatWorkerLogoutMessage(context);
 
-        if (!hasSupabaseEnv()) {
+        if (isOfflineDemo() || process.env.NEXT_PUBLIC_DATA_BACKEND === "mssql") {
           toast({
             title: "Manager notified",
             description: summary,

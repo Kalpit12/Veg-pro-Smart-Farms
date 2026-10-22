@@ -6,8 +6,8 @@ import {
   formatWorkerLogoutMessage,
   type WorkerLogoutContext,
 } from "@/lib/worker-logout-alert";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
-import { createClient } from "@/lib/supabase/client";
+import { getCurrentUserProfileAction } from "@/features/auth/sign-in-action";
+import { isOfflineDemo } from "@/lib/data-backend";
 import { getCurrentUser } from "@/services/supabase/auth-service";
 import { createAlert } from "@/services/supabase/alert-service";
 import { getWorkerPosition } from "@/services/supabase/position-service";
@@ -15,19 +15,12 @@ import { useFieldOpsStore } from "@/store/field-ops-store";
 import { useScanStore } from "@/store/scan-store";
 
 async function resolveWorkerName(): Promise<string> {
-  if (!hasSupabaseEnv()) return "Demo Worker";
+  if (isOfflineDemo()) return "Demo Worker";
 
-  const user = await getCurrentUser();
-  if (!user) return "Unknown worker";
-
-  const supabase = createClient();
-  const { data: profile } = await supabase
-    .from("users")
-    .select("full_name, email")
-    .eq("id", user.id)
-    .single();
-
-  return profile?.full_name ?? profile?.email ?? user.email ?? user.id;
+  const profile = await getCurrentUserProfileAction();
+  if (profile?.full_name?.trim()) return profile.full_name.trim();
+  if (profile?.email) return profile.email.split("@")[0] ?? profile.email;
+  return "Unknown worker";
 }
 
 async function resolveCoordinates(
@@ -40,7 +33,7 @@ async function resolveCoordinates(
 
   try {
     const coords = await captureGps({
-      allowDemoFallback: !hasSupabaseEnv(),
+      allowDemoFallback: isOfflineDemo(),
       anchorFallback,
     });
     return { latitude: coords.latitude, longitude: coords.longitude };
@@ -50,7 +43,7 @@ async function resolveCoordinates(
     }
   }
 
-  if (hasSupabaseEnv()) {
+  if (!isOfflineDemo()) {
     const user = await getCurrentUser();
     if (user) {
       const { data: position } = await getWorkerPosition(user.id);
@@ -85,11 +78,11 @@ export async function notifyAdminWorkerLogout(): Promise<WorkerLogoutContext> {
   const context = await gatherWorkerLogoutContext();
   const message = formatWorkerLogoutMessage(context);
 
-  if (hasSupabaseEnv()) {
+  if (isOfflineDemo()) {
+    useFieldOpsStore.getState().addDemoAlert("worker_logout", message);
+  } else {
     const { error } = await createAlert("worker_logout", message);
     if (error) throw error;
-  } else {
-    useFieldOpsStore.getState().addDemoAlert("worker_logout", message);
   }
 
   return context;

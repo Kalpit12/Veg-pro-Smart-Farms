@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getServerDataBackend } from "@/lib/data-backend";
 import { findUserByEmail, verifyMssqlPassword } from "@/lib/auth/mssql-credentials";
+import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import {
   clearSessionCookie,
   getSessionFromCookies,
@@ -115,6 +116,49 @@ export async function signInWithPasswordAction(
   } catch (error) {
     return { ok: false, error: networkErrorMessage(error) };
   }
+}
+
+export async function getCurrentUserProfileAction(): Promise<{
+  id: string;
+  email: string;
+  full_name: string | null;
+} | null> {
+  const session = await getSessionAction();
+  if (!session) return null;
+
+  const backend = getServerDataBackend();
+  if (backend === "mssql") {
+    const pool = await getMssqlPool();
+    const result = await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, session.id)
+      .query(`SELECT full_name, email FROM dbo.users WHERE id = @id`);
+    const row = result.recordset[0];
+    if (!row) {
+      return { id: session.id, email: session.email, full_name: null };
+    }
+    return {
+      id: session.id,
+      email: (row.email as string) ?? session.email,
+      full_name: (row.full_name as string) ?? null,
+    };
+  }
+
+  if (backend === "supabase") {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("users")
+      .select("full_name, email")
+      .eq("id", session.id)
+      .maybeSingle();
+    return {
+      id: session.id,
+      email: data?.email ?? session.email,
+      full_name: data?.full_name ?? null,
+    };
+  }
+
+  return null;
 }
 
 export async function signOutAction() {
