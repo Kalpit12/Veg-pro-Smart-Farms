@@ -28,16 +28,15 @@ const varieties = [
 ];
 
 const src = readFileSync(resolve("src/lib/star-greenhouse-rows.ts"), "utf8");
-const rows = [
-  ...src.matchAll(
-    /\{ id: "([^"]+)", name: "([^"]+)", areaSqm: ([0-9.]+), bayMax: (\d+), columnMax: (\d+)/g,
-  ),
-].map((m) => ({
+const rowRe =
+  /\{ id: "([^"]+)", name: "([^"]+)", areaSqm: ([0-9.]+), bayMax: (\d+), columnMax: (\d+)(?:,[^}]*)?, varieties: \["([^"]+)"\]/g;
+const rows = [...src.matchAll(rowRe)].map((m) => ({
   id: m[1],
   name: m[2],
   areaSqm: Number(m[3]),
   bayMax: Number(m[4]),
   columnMax: Number(m[5]),
+  variety: m[6],
 }));
 
 if (rows.length < 50) {
@@ -63,9 +62,11 @@ await pool
   .input("id", sql.UniqueIdentifier, catId)
   .query(`
     MERGE dbo.crop_categories AS t
-    USING (SELECT @id AS id, N'Cut Rose' AS name) AS s
+    USING (SELECT @id AS id, N'Super Premium' AS name) AS s
     ON t.id = s.id
+    WHEN MATCHED AND t.name <> s.name THEN UPDATE SET name = s.name
     WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name);
+    UPDATE dbo.crop_categories SET name = N'Super Premium' WHERE name = N'Cut Rose';
   `);
 
 for (const name of varieties) {
@@ -80,12 +81,14 @@ for (const name of varieties) {
 }
 
 let inserted = 0;
+let updated = 0;
 for (const row of rows) {
   const result = await pool
     .request()
     .input("id", sql.UniqueIdentifier, row.id)
     .input("farm", sql.UniqueIdentifier, farmId)
     .input("name", sql.NVarChar(200), row.name)
+    .input("variety", sql.NVarChar(200), row.variety)
     .input("area", sql.Decimal(12, 2), row.areaSqm)
     .input("bay", sql.SmallInt, row.bayMax)
     .input("col", sql.SmallInt, row.columnMax)
@@ -93,20 +96,27 @@ for (const row of rows) {
       IF NOT EXISTS (SELECT 1 FROM dbo.greenhouses WHERE id = @id)
       BEGIN
         INSERT INTO dbo.greenhouses (id, farm_id, name, crop_type, area_sqm, bay_count, column_count)
-        VALUES (@id, @farm, @name, N'Cut Rose', @area, @bay, @col);
+        VALUES (@id, @farm, @name, @variety, @area, @bay, @col);
         SELECT 1 AS did_insert;
       END
-      ELSE SELECT 0 AS did_insert;
+      ELSE
+      BEGIN
+        UPDATE dbo.greenhouses
+        SET crop_type = @variety
+        WHERE id = @id AND (crop_type IS NULL OR crop_type = N'' OR crop_type = N'Cut Rose');
+        SELECT 0 AS did_insert;
+      END
     `);
-  if (result.recordset?.[0]?.did_insert === 1) inserted += 1;
+  if (result.recordset[0]?.did_insert === 1) inserted += 1;
+  else updated += 1;
 }
 
 const count = await pool
   .request()
   .input("farm", sql.UniqueIdentifier, farmId)
-  .query(`SELECT COUNT(*) AS c FROM dbo.greenhouses WHERE farm_id = @farm`);
+  .query(`SELECT COUNT(*) AS n FROM dbo.greenhouses WHERE farm_id = @farm`);
 
 console.log(
-  `OK: Star greenhouses ready. Inserted ${inserted} new. Total for farm: ${count.recordset[0].c}`,
+  `Star seed done: ${inserted} inserted, ${updated} existing rows touched, ${count.recordset[0].n} greenhouses on farm.`,
 );
 await pool.close();

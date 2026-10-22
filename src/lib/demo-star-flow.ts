@@ -243,7 +243,7 @@ export function seedStarFlowRecords() {
       farmId: BEMACK_FARM_ID,
       greenhouseName: s.worker.greenhouse,
       greenhouseId: loc.greenhouseId,
-      category: "Cut Rose" as BemackCategory,
+      category: "Super Premium" as BemackCategory,
       variety: s.worker.variety,
       beds: 11,
       columnNo: s.col,

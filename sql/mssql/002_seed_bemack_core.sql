@@ -4,7 +4,7 @@
 SET NOCOUNT ON;
 
 DECLARE @farmId UNIQUEIDENTIFIER = 'beee0001-0001-4001-8001-000000000001';
-DECLARE @catCutRose UNIQUEIDENTIFIER = 'ccccccc1-1111-1111-1111-111111111111';
+DECLARE @catSuperPremium UNIQUEIDENTIFIER = 'ccccccc1-1111-1111-1111-111111111111';
 
 MERGE dbo.farms AS t
 USING (SELECT @farmId AS id, N'Bemack' AS name, N'Protected floriculture' AS location, N'Greenhouse' AS type) AS s
@@ -12,17 +12,17 @@ ON t.id = s.id
 WHEN NOT MATCHED THEN INSERT (id, name, location, type) VALUES (s.id, s.name, s.location, s.type);
 
 MERGE dbo.crop_categories AS t
-USING (SELECT @catCutRose AS id, N'Cut Rose' AS name) AS s
+USING (SELECT @catSuperPremium AS id, N'Super Premium' AS name) AS s
 ON t.id = s.id
 WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name);
 
 INSERT INTO dbo.crop_varieties (id, category_id, name)
-SELECT NEWID(), @catCutRose, v.name
+SELECT NEWID(), @catSuperPremium, v.name
 FROM (VALUES
   (N'ANNAKARINA'),(N'EVER RED'),(N'EXPLORER'),(N'MADAM RED')
 ) AS v(name)
 WHERE NOT EXISTS (
-  SELECT 1 FROM dbo.crop_varieties cv WHERE cv.category_id = @catCutRose AND cv.name = v.name
+  SELECT 1 FROM dbo.crop_varieties cv WHERE cv.category_id = @catSuperPremium AND cv.name = v.name
 );
 
 INSERT INTO dbo.scouting_parameters (id, param_key, param_group, name, sort_order)

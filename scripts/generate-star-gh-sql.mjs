@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 const t = readFileSync(resolve("src/lib/star-greenhouse-rows.ts"), "utf8");
 const rows = [
   ...t.matchAll(
-    /\{ id: "([^"]+)", name: "([^"]+)", areaSqm: ([0-9.]+), bayMax: (\d+), columnMax: (\d+)/g,
+    /\{ id: "([^"]+)", name: "([^"]+)", areaSqm: ([0-9.]+), bayMax: (\d+), columnMax: (\d+)(?:,[^}]*)?, varieties: \["([^"]+)"\]/g,
   ),
 ];
 
@@ -38,7 +38,7 @@ ON t.id = s.id
 WHEN MATCHED THEN UPDATE SET name = s.name, location = s.location
 WHEN NOT MATCHED THEN INSERT (id, name, location, type) VALUES (s.id, s.name, s.location, s.type);`);
 sql.push(`MERGE dbo.crop_categories AS t
-USING (SELECT @cat AS id, N'Cut Rose' AS name) AS s
+USING (SELECT @cat AS id, N'Super Premium' AS name) AS s
 ON t.id = s.id
 WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name);`);
 
@@ -51,17 +51,17 @@ for (const v of vars) {
 }
 
 sql.push(`INSERT INTO dbo.greenhouses (id, farm_id, name, crop_type, area_sqm, bay_count, column_count)
-SELECT v.id, @farmId, v.name, N'Cut Rose', v.area_sqm, v.bay_count, v.column_count
+SELECT v.id, @farmId, v.name, v.variety, v.area_sqm, v.bay_count, v.column_count
 FROM (VALUES`);
 sql.push(
   rows
     .map(
-      ([, id, name, area, bay, col]) =>
-        `  ('${id}', N'${name}', ${area}, ${bay}, ${col})`,
+      ([, id, name, area, bay, col, variety]) =>
+        `  ('${id}', N'${name}', N'${variety}', ${area}, ${bay}, ${col})`,
     )
     .join(",\n"),
 );
-sql.push(`) AS v(id, name, area_sqm, bay_count, column_count)
+sql.push(`) AS v(id, name, variety, area_sqm, bay_count, column_count)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.greenhouses g WHERE g.id = v.id);`);
 sql.push(
   `SELECT COUNT(*) AS greenhouse_count FROM dbo.greenhouses WHERE farm_id = @farmId;`,

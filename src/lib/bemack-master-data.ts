@@ -10,7 +10,7 @@ export const BEMACK_FARM_NAME = "Star" as const;
 
 export const BEMACK_FARM_ID = "beee0001-0001-4001-8001-000000000001";
 
-export const BEMACK_CATEGORIES = ["Cut Rose"] as const;
+export const BEMACK_CATEGORIES = ["Super Premium"] as const;
 
 export type BemackCategory = (typeof BEMACK_CATEGORIES)[number];
 
@@ -19,7 +19,7 @@ export const BEMACK_GREENHOUSES = STAR_GREENHOUSE_ROWS.map((row) => row.name);
 const STAR_VARIETIES = STAR_VARIETY_ORDER;
 
 export const BEMACK_VARIETIES: Record<BemackCategory, readonly string[]> = {
-  "Cut Rose": STAR_VARIETIES,
+  "Super Premium": STAR_VARIETIES,
 };
 
 /** VegPro Pest and Disease List.xlsx — Disease names in file order. */
@@ -217,7 +217,7 @@ export const BEMACK_SAMPLE_SCOUTS = [
   {
     scoutName: "Test Patel",
     greenhouse: "STGH01A",
-    category: "Cut Rose" as BemackCategory,
+    category: "Super Premium" as BemackCategory,
     variety: "Red Calypso",
     beds: 11,
     columnNo: 1,
@@ -229,7 +229,7 @@ export const BEMACK_SAMPLE_SCOUTS = [
   {
     scoutName: "Test Shah",
     greenhouse: "STGH03A",
-    category: "Cut Rose" as BemackCategory,
+    category: "Super Premium" as BemackCategory,
     variety: "Athena",
     beds: 11,
     columnNo: 2,
@@ -241,7 +241,7 @@ export const BEMACK_SAMPLE_SCOUTS = [
   {
     scoutName: "Test Singh",
     greenhouse: "STGH05A",
-    category: "Cut Rose" as BemackCategory,
+    category: "Super Premium" as BemackCategory,
     variety: "Confidential",
     beds: 11,
     columnNo: 1,

@@ -65,9 +65,9 @@ export function CropIntelligencePanel() {
   const load = useCallback(async () => {
     if (isOfflineDemo()) {
       setRows([
-        { crop_type: "Cut Rose", name: "STGH01A", farms: { name: "Star" } },
-        { crop_type: "Cut Rose", name: "STGH02A", farms: { name: "Star" } },
-        { crop_type: "Cut Rose", name: "STGH03A", farms: { name: "Star" } },
+        { crop_type: "Red Calypso", name: "STGH01A", farms: { name: "Star" } },
+        { crop_type: "Fuschiana", name: "STGH02A", farms: { name: "Star" } },
+        { crop_type: "Athena", name: "STGH03A", farms: { name: "Star" } },
       ]);
       setLoading(false);
       return;

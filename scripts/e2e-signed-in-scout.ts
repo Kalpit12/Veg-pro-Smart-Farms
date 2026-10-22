@@ -99,7 +99,7 @@ async function main() {
   const { data: cat, error: catErr } = await workerClient
     .from("crop_categories")
     .select("id, name")
-    .eq("name", "Cut Rose")
+    .eq("name", "Super Premium")
     .maybeSingle();
   const { data: variety, error: varErr } = await workerClient
     .from("crop_varieties")

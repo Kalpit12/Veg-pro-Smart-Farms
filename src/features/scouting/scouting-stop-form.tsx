@@ -100,7 +100,7 @@ export function ScoutingStopForm({
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      category: "Cut Rose",
+      category: "Super Premium",
       variety: "",
       beds: 1,
       column_no: 1,

@@ -50,7 +50,7 @@ Your farm will give you your own login. Do not share passwords.
 1. Tap **Scout stop**.
 2. Confirm farm / greenhouse shown at the top.
 3. Fill the form carefully:
-   - **Category** (e.g. Cut Rose)
+   - **Category** (e.g. Super Premium)
    - **Variety**
    - **Column / bay / beds** as required
    - **Issue type** — pest or disease

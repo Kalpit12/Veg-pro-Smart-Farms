@@ -32,7 +32,7 @@ const DEMO_ISSUES = [
   })),
 ];
 
-const DEMO_VARIETIES = [...BEMACK_VARIETIES["Cut Rose"].slice(0, 7)];
+const DEMO_VARIETIES = [...BEMACK_VARIETIES["Super Premium"].slice(0, 7)];
 
 /**
  * Demo trends matrix: every Star greenhouse × lookback days with

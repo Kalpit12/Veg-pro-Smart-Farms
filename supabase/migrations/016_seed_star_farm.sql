@@ -12,7 +12,7 @@ on conflict (id) do update set
   location = excluded.location;
 
 insert into public.crop_categories (id, name)
-values ('ccccccc3-3333-3333-3333-333333333333', 'Cut Rose')
+values ('ccccccc3-3333-3333-3333-333333333333', 'Super Premium')
 on conflict (id) do update set name = excluded.name;
 
 insert into public.crop_varieties (category_id, name)
