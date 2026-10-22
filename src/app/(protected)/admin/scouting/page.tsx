@@ -2,7 +2,6 @@ import { Suspense } from "react";
 
 import { GreenhouseHeatGrid } from "@/features/scouting/greenhouse-heat-grid";
 import { ScoutRouteMap } from "@/features/scouting/scout-route-map";
-import { ScoutingCoveragePanel } from "@/features/scouting/scouting-coverage-panel";
 import { ScoutingKpiDashboard } from "@/features/scouting/scouting-kpi-dashboard";
 import { ScoutingLiveAuditPanel } from "@/features/scouting/scouting-live-audit-panel";
 import { ScoutingPressurePanel } from "@/features/scouting/scouting-pressure-panel";
@@ -32,8 +31,6 @@ export default function AdminScoutingPage() {
           <ScoutRouteMap />
         </Suspense>
       </div>
-
-      <ScoutingCoveragePanel />
 
       <ScoutingPressurePanel />
 
