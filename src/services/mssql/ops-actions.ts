@@ -2,6 +2,7 @@
 
 import * as q from "@/services/mssql/ops-queries";
 import * as wd from "@/services/mssql/worker-directory-queries";
+import * as act from "@/services/mssql/activity-queries";
 import type { InfestationStatus } from "@/types/db";
 import type { ReportInfestationInput } from "@/services/supabase/infestation-service";
 import type { LogSprayInput } from "@/services/supabase/spray-service";
@@ -127,6 +128,29 @@ export async function mssqlListWorkerOpsRowsAction() {
 
 export async function mssqlListWorkerTrendsSinceAction(sinceIso: string) {
   return wd.mssqlListWorkerTrendsSince(new Date(sinceIso));
+}
+
+export async function mssqlListActivitiesAction(params: {
+  q?: string;
+  status?: "pending" | "approved" | "rejected";
+  limit?: number;
+}) {
+  return act.mssqlListActivities(params);
+}
+
+export async function mssqlSetActivityStatusAction(
+  id: string,
+  status: "approved" | "rejected",
+) {
+  return act.mssqlSetActivityStatus(id, status);
+}
+
+export async function mssqlListUnifiedActivityLogsAction(params: {
+  q?: string;
+  status?: import("@/services/supabase/activity-log-service").ActivityLogStatus | "";
+  limit?: number;
+}) {
+  return act.mssqlListUnifiedActivityLogs(params);
 }
 
 export async function mssqlUpdateStaffAccountAction(input: {

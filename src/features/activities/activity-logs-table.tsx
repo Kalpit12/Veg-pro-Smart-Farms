@@ -147,6 +147,7 @@ export function ActivityLogsTable() {
                 <th className="p-2">Submitted by</th>
                 <th className="p-2">Farm</th>
                 <th className="p-2">Greenhouse</th>
+                <th className="p-2">Variety</th>
                 <th className="p-2">Activity</th>
                 <th className="p-2">Details</th>
                 <th className="p-2">Status</th>
@@ -160,6 +161,7 @@ export function ActivityLogsTable() {
                   <td className="p-2">{row.users?.full_name ?? "—"}</td>
                   <td className="p-2">{row.farms?.name ?? "—"}</td>
                   <td className="p-2">{row.greenhouses?.name ?? "—"}</td>
+                  <td className="p-2">{row.variety ?? "—"}</td>
                   <td className="p-2 font-medium">{row.activity_type}</td>
                   <td className="max-w-xs truncate p-2 text-muted-foreground">
                     {row.notes ?? "—"}

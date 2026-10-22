@@ -13,7 +13,8 @@ import type { StaffAccountRole } from "@/features/admin/create-staff-account-act
 
 function hotspotSelectJoin() {
   return `
-    SELECT h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
+    SELECT h.*, f.name AS farm_name, g.name AS greenhouse_name, g.crop_type AS greenhouse_crop_type,
+           u.full_name AS reporter_name
     FROM dbo.infestation_hotspots h
     LEFT JOIN dbo.farms f ON f.id = h.farm_id
     LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
@@ -36,7 +37,12 @@ function mapHotspot(r: Record<string, unknown>) {
     status: r.status as InfestationStatus,
     created_at: toIso(r.created_at),
     farms: r.farm_name ? { name: r.farm_name as string } : null,
-    greenhouses: r.greenhouse_name ? { name: r.greenhouse_name as string } : null,
+    greenhouses: r.greenhouse_name
+      ? {
+          name: r.greenhouse_name as string,
+          crop_type: (r.greenhouse_crop_type as string) ?? undefined,
+        }
+      : null,
     users: r.reporter_name ? { full_name: r.reporter_name as string } : null,
   };
 }
@@ -91,7 +97,8 @@ async function listHotspotsQuery(where: string, params: Record<string, unknown>,
       else req.input(k, sql.NVarChar(200), String(v));
     }
     const result = await req.query(`
-      SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
+      SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, g.crop_type AS greenhouse_crop_type,
+             u.full_name AS reporter_name
       FROM dbo.infestation_hotspots h
       LEFT JOIN dbo.farms f ON f.id = h.farm_id
       LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
@@ -139,7 +146,8 @@ export async function mssqlListActiveHotspots(limit = 50) {
     );
     const pool = await getMssqlPool();
     const result = await pool.request().input("limit", sql.Int, limit).query(`
-      SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
+      SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, g.crop_type AS greenhouse_crop_type,
+             u.full_name AS reporter_name
       FROM dbo.infestation_hotspots h
       LEFT JOIN dbo.farms f ON f.id = h.farm_id
       LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
@@ -499,7 +507,7 @@ export async function mssqlCreateStaffAccount(input: {
       VALUES (@id, @email, @full_name, @phone, @role, @password_hash)
     `);
 
-  if (input.role === "supervisor") {
+  if (input.role === "supervisor" || input.role === "worker") {
     try {
       await insertSupervisorGreenhouseAccessMssql(id, input.greenhouseIds ?? []);
     } catch (e) {

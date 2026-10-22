@@ -40,6 +40,7 @@ type HistoryItem = {
   farm: string;
   greenhouse: string;
   greenhouse_id: string;
+  variety: string;
   worker: string;
   created_at: string;
   severity?: number;
@@ -60,7 +61,7 @@ function mapHotspotToHistory(row: {
   severity?: number;
   status?: string;
   farms?: { name?: string } | null;
-  greenhouses?: { name?: string } | null;
+  greenhouses?: { name?: string; crop_type?: string } | null;
   users?: { full_name?: string } | null;
 }): HistoryItem {
   return {
@@ -71,6 +72,7 @@ function mapHotspotToHistory(row: {
     farm: row.farms?.name ?? "—",
     greenhouse: row.greenhouses?.name ?? "—",
     greenhouse_id: row.greenhouse_id ?? "",
+    variety: row.greenhouses?.crop_type ?? "—",
     worker: row.users?.full_name ?? "—",
     created_at: row.created_at,
     severity: row.severity,
@@ -87,7 +89,7 @@ function mapSprayToHistory(row: {
   severity_before?: number | null;
   severity_after?: number | null;
   farms?: { name?: string } | null;
-  greenhouses?: { name?: string } | null;
+  greenhouses?: { name?: string; crop_type?: string } | null;
   users?: { full_name?: string } | null;
 }): HistoryItem {
   const evaluate =
@@ -103,6 +105,7 @@ function mapSprayToHistory(row: {
     farm: row.farms?.name ?? "—",
     greenhouse: row.greenhouses?.name ?? "—",
     greenhouse_id: row.greenhouse_id ?? "",
+    variety: row.greenhouses?.crop_type ?? "—",
     worker: row.users?.full_name ?? "—",
     created_at: row.created_at,
     severity: row.severity_after ?? row.severity_before ?? undefined,
@@ -368,6 +371,7 @@ export function HistoryList() {
                 <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {item.farm} / {item.greenhouse}
+                  {item.variety && item.variety !== "—" ? ` · ${item.variety}` : ""}
                 </p>
                 <p className="mt-2 flex items-center gap-1.5 text-sm">
                   <User className="size-3.5 shrink-0 text-primary" />

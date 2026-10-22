@@ -81,12 +81,12 @@ export async function createStaffAccountAction(
     return { ok: false, error: "Role must be field worker, farm manager, or admin." };
   }
 
-  const greenhouseIds =
-    role === "supervisor" ? normalizeGreenhouseIds(input.greenhouseIds ?? []) : [];
-  if (role === "supervisor" && !greenhouseIds.length) {
+  const needsSites = role === "supervisor" || role === "worker";
+  const greenhouseIds = needsSites ? normalizeGreenhouseIds(input.greenhouseIds ?? []) : [];
+  if (needsSites && !greenhouseIds.length) {
     return {
       ok: false,
-      error: "Select at least one greenhouse this farm manager can monitor.",
+      error: "Select at least one farm or greenhouse this person can access.",
     };
   }
 
@@ -171,7 +171,7 @@ export async function createStaffAccountAction(
     return { ok: false, error: profileError.message };
   }
 
-  if (role === "supervisor") {
+  if (role === "supervisor" || role === "worker") {
     const access = await replaceSupervisorGreenhouseAccess(created.user.id, greenhouseIds);
     if (access.error) {
       await admin.auth.admin.deleteUser(created.user.id);

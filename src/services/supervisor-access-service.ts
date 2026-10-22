@@ -149,7 +149,7 @@ export async function replaceSupervisorGreenhouseAccess(
   }
   const ids = normalizeGreenhouseIds(greenhouseIds);
   if (!ids.length) {
-    return { error: { message: "Select at least one greenhouse for this farm manager." } };
+    return { error: { message: "Select at least one greenhouse." } };
   }
 
   try {
@@ -161,8 +161,8 @@ export async function replaceSupervisorGreenhouseAccess(
         .input("id", sql.UniqueIdentifier, trimmedUser)
         .query(`SELECT role FROM dbo.users WHERE id = @id`);
       const role = roleCheck.recordset[0]?.role as string | undefined;
-      if (role !== "supervisor") {
-        return { error: { message: "Site access applies to farm managers only." } };
+      if (role !== "supervisor" && role !== "worker") {
+        return { error: { message: "Site access applies to field workers and farm managers." } };
       }
 
       await pool.request().input("user_id", sql.UniqueIdentifier, trimmedUser).query(`
@@ -196,8 +196,8 @@ export async function replaceSupervisorGreenhouseAccess(
       .select("role")
       .eq("id", trimmedUser)
       .maybeSingle();
-    if (profile?.role !== "supervisor") {
-      return { error: { message: "Site access applies to farm managers only." } };
+    if (profile?.role !== "supervisor" && profile?.role !== "worker") {
+      return { error: { message: "Site access applies to field workers and farm managers." } };
     }
 
     const { error: delError } = await admin
@@ -276,7 +276,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
 
     if (backend === "mssql") {
       const session = await requireServerSession();
-      if (session.role !== "supervisor") {
+      if (session.role !== "supervisor" && session.role !== "worker") {
         return { data: [], error: null };
       }
       const pool = await getMssqlPool();

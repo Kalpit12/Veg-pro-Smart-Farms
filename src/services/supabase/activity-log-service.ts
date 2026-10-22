@@ -1,3 +1,5 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
+import { mssqlListUnifiedActivityLogsAction } from "@/services/mssql/ops-actions";
 import { listActivities } from "@/services/supabase/activity-service";
 import { listHotspots, type HotspotRow } from "@/services/supabase/infestation-service";
 import { listScoutingRecords, type ScoutingRecordRow } from "@/services/supabase/scouting-service";
@@ -22,6 +24,7 @@ export type ActivityLogRow = {
   users?: { full_name?: string } | null;
   farms?: { name?: string } | null;
   greenhouses?: { name?: string } | null;
+  variety?: string | null;
 };
 
 function hotspotLogStatus(status: string): ActivityLogStatus {
@@ -81,6 +84,12 @@ export async function listUnifiedActivityLogs(params: {
   limit?: number;
 }): Promise<{ data: ActivityLogRow[]; error: Error | null }> {
   const limit = params.limit ?? 100;
+
+  if (routeDataThroughMssql()) {
+    const res = await mssqlListUnifiedActivityLogsAction(params);
+    if (res.error) return { data: [], error: new Error(res.error.message) };
+    return { data: res.data ?? [], error: null };
+  }
 
   const [activitiesRes, hotspotsRes, spraysRes, scoutingRes] = await Promise.all([
     listActivities({ limit: 200 }),
@@ -168,6 +177,10 @@ export async function listUnifiedActivityLogs(params: {
   }
 
   for (const row of (scoutingRes.data as ScoutingRecordRow[]) ?? []) {
+    const variety =
+      (row.crop_varieties as { name?: string } | null)?.name ??
+      (row.greenhouses as { crop_type?: string } | null)?.crop_type ??
+      null;
     rows.push({
       id: `scout-${row.id}`,
       activity_type: "Scouting stop",
@@ -178,6 +191,7 @@ export async function listUnifiedActivityLogs(params: {
       users: row.users,
       farms: row.farms,
       greenhouses: row.greenhouses,
+      variety,
     });
   }
 

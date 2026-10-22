@@ -158,7 +158,8 @@ export function StaffAccountsPanel() {
         phone,
         role,
         password,
-        greenhouseIds: role === "supervisor" ? createGreenhouseIds : undefined,
+        greenhouseIds:
+          role === "supervisor" || role === "worker" ? createGreenhouseIds : undefined,
       });
       if (!result.ok) {
         toast({ title: "Account not created", description: result.error, tone: "error" });
@@ -371,9 +372,11 @@ export function StaffAccountsPanel() {
               </Button>
             </div>
           </label>
-          {role === "supervisor" ? (
+          {role === "supervisor" || role === "worker" ? (
             <div className="space-y-2 sm:col-span-2">
-              <p className="text-sm font-medium">Farms &amp; greenhouses this manager can see</p>
+              <p className="text-sm font-medium">
+                Farms &amp; greenhouses this {role === "worker" ? "worker" : "manager"} can see
+              </p>
               <FarmGreenhouseAccessPicker
                 catalog={siteCatalog}
                 value={createGreenhouseIds}
@@ -459,7 +462,7 @@ export function StaffAccountsPanel() {
                       {canManageStatus ? (
                         <>
                           <td className="px-4 py-3">
-                            {row.role === "supervisor" ? (
+                            {row.role === "supervisor" || row.role === "worker" ? (
                               <Button
                                 type="button"
                                 variant="ghost"
