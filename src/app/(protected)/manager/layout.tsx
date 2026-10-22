@@ -8,6 +8,7 @@ const managerNav: NavItem[] = [
   { href: "/manager/workers", label: "Workers", icon: "workers" },
   { href: "/manager/spray", label: "Log spray", icon: "spray" },
   { href: "/manager/history", label: "History", icon: "history" },
+  { href: "/manager/trends", label: "Trends", icon: "trends" },
 ];
 
 export default async function ManagerLayout({

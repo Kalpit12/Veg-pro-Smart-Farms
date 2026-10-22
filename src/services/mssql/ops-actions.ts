@@ -99,8 +99,13 @@ export async function mssqlCreateStaffAccountAction(input: {
   phone: string;
   role: StaffAccountRole;
   password: string;
+  greenhouseIds?: string[];
 }) {
   return q.mssqlCreateStaffAccount(input);
+}
+
+export async function mssqlSetStaffAccountActiveAction(userId: string, isActive: boolean) {
+  return q.mssqlSetStaffAccountActive(userId, isActive);
 }
 
 export async function mssqlGetDashboardKpisAction() {

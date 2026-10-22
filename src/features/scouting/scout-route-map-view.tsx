@@ -402,7 +402,7 @@ function RouteMapLayers({
               <br />
                 <span style={{ fontSize: 12, color: "#64748b" }}>
                   {georef?.kind === "gps-fit"
-                    ? "GPS-adjusted bay×column (Scarab-style)"
+                    ? "GPS-adjusted bay×column"
                     : georef?.kind === "track-footprint"
                       ? "Grid aligned to walk track"
                       : pos.source === "cell"

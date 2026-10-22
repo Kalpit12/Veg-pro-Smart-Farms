@@ -43,7 +43,7 @@ export type WorkerRoundMetric = {
   distanceM: number;
   coveragePct: number | null;
   pointCount: number;
-  /** Quality flags for Scarab-style audits */
+  /** Quality flags for scout audits */
   flags: ("short" | "low_coverage" | "no_gps")[];
 };
 
@@ -64,7 +64,7 @@ export type WorkerTrendsSummary = {
   greenhouseCount: number;
   greenhouseNames: string[];
   lastActiveAt: string | null;
-  /** Scarab-style round KPIs */
+  /** Scouting round KPIs */
   roundsCompleted: number;
   totalDurationS: number;
   totalDistanceM: number;

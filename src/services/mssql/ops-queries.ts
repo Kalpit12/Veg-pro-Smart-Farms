@@ -2,7 +2,9 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 
 import { fail, ok, toIso } from "@/lib/mssql/result";
+import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
 import { requireServerSession } from "@/lib/mssql/session-server";
+import { insertSupervisorGreenhouseAccessMssql } from "@/services/supervisor-access-service";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import type { InfestationStatus } from "@/types/db";
 import type { ReportInfestationInput } from "@/services/supabase/infestation-service";
@@ -72,6 +74,13 @@ export async function mssqlReportInfestation(input: ReportInfestationInput) {
 }
 
 async function listHotspotsQuery(where: string, params: Record<string, unknown>, limit: number) {
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "h.greenhouse_id",
+    "h.farm_id",
+  );
   const pool = await getMssqlPool();
   const req = pool.request().input("limit", sql.Int, limit);
   for (const [k, v] of Object.entries(params)) {
@@ -85,14 +94,13 @@ async function listHotspotsQuery(where: string, params: Record<string, unknown>,
     LEFT JOIN dbo.farms f ON f.id = h.farm_id
     LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
     LEFT JOIN dbo.users u ON u.id = h.reported_by
-    ${where}
+    ${where}${scope}
     ORDER BY h.created_at DESC
   `);
   return ok(result.recordset.map(mapHotspot));
 }
 
 export async function mssqlListHotspots(limit = 200) {
-  await requireServerSession();
   return listHotspotsQuery("WHERE 1=1", {}, limit);
 }
 
@@ -116,7 +124,13 @@ export async function mssqlListHotspotsForHistory(options?: {
 }
 
 export async function mssqlListActiveHotspots(limit = 50) {
-  await requireServerSession();
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "h.greenhouse_id",
+    "h.farm_id",
+  );
   const pool = await getMssqlPool();
   const result = await pool.request().input("limit", sql.Int, limit).query(`
     SELECT TOP (@limit) h.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS reporter_name
@@ -124,7 +138,7 @@ export async function mssqlListActiveHotspots(limit = 50) {
     LEFT JOIN dbo.farms f ON f.id = h.farm_id
     LEFT JOIN dbo.greenhouses g ON g.id = h.greenhouse_id
     LEFT JOIN dbo.users u ON u.id = h.reported_by
-    WHERE h.status = 'active'
+    WHERE h.status = 'active'${scope}
     ORDER BY h.severity DESC, h.created_at DESC
   `);
   return ok(result.recordset.map(mapHotspot));
@@ -198,22 +212,32 @@ export async function mssqlUpdateHotspotAfterSpray(
 }
 
 export async function mssqlGetHotspotKpis() {
-  await requireServerSession();
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "greenhouse_id",
+    "farm_id",
+  );
   const pool = await getMssqlPool();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [active, severe, resolvedToday] = await Promise.all([
-    pool.request().query(`SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'active'`),
     pool
       .request()
       .query(
-        `SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'active' AND severity >= 4`,
+        `SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'active'${scope}`,
+      ),
+    pool
+      .request()
+      .query(
+        `SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'active' AND severity >= 4${scope}`,
       ),
     pool
       .request()
       .input("since", sql.DateTime2, today)
       .query(
-        `SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'resolved' AND created_at >= @since`,
+        `SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'resolved' AND created_at >= @since${scope}`,
       ),
   ]);
   return {
@@ -264,7 +288,13 @@ export async function mssqlLogSpray(input: LogSprayInput) {
 }
 
 export async function mssqlListSprays(limit = 200) {
-  await requireServerSession();
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "s.greenhouse_id",
+    "s.farm_id",
+  );
   const pool = await getMssqlPool();
   const result = await pool.request().input("limit", sql.Int, limit).query(`
     SELECT TOP (@limit) s.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS worker_name
@@ -272,6 +302,7 @@ export async function mssqlListSprays(limit = 200) {
     LEFT JOIN dbo.farms f ON f.id = s.farm_id
     LEFT JOIN dbo.greenhouses g ON g.id = s.greenhouse_id
     LEFT JOIN dbo.users u ON u.id = s.worker_id
+    WHERE 1=1${scope}
     ORDER BY s.created_at DESC
   `);
   return ok(
@@ -388,7 +419,10 @@ export async function mssqlListStaffAccounts() {
   }
   const pool = await getMssqlPool();
   const result = await pool.request().query(`
-    SELECT id, full_name, email, phone, role, created_at FROM dbo.users ORDER BY created_at DESC
+    SELECT id, full_name, email, phone, role,
+           CAST(COALESCE(is_active, 1) AS bit) AS is_active,
+           created_at
+    FROM dbo.users ORDER BY created_at DESC
   `);
   return ok(
     result.recordset.map((r) => ({
@@ -397,9 +431,31 @@ export async function mssqlListStaffAccounts() {
       email: r.email as string,
       phone: r.phone as string | null,
       role: r.role as string,
+      is_active: r.is_active === true || r.is_active === 1,
       created_at: toIso(r.created_at),
     })),
   );
+}
+
+export async function mssqlSetStaffAccountActive(userId: string, isActive: boolean) {
+  const session = await requireServerSession();
+  if (session.role !== "admin") return fail("Only admins can change account status.");
+  if (session.id === userId && !isActive) {
+    return fail("You cannot deactivate your own account.");
+  }
+
+  const pool = await getMssqlPool();
+  const result = await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, userId)
+    .input("is_active", sql.Bit, isActive ? 1 : 0)
+    .query(`
+      UPDATE dbo.users SET is_active = @is_active WHERE id = @id;
+      SELECT CAST(@@ROWCOUNT AS int) AS affected;
+    `);
+  const affected = result.recordset[0]?.affected as number | undefined;
+  if (!affected) return fail("User not found.");
+  return ok({ id: userId, is_active: isActive });
 }
 
 export async function mssqlCreateStaffAccount(input: {
@@ -408,6 +464,7 @@ export async function mssqlCreateStaffAccount(input: {
   phone: string;
   role: StaffAccountRole;
   password: string;
+  greenhouseIds?: string[];
 }) {
   const session = await requireServerSession();
   if (session.role !== "admin") return fail("Only admins can create accounts.");
@@ -432,6 +489,18 @@ export async function mssqlCreateStaffAccount(input: {
       INSERT INTO dbo.users (id, email, full_name, phone, role, password_hash)
       VALUES (@id, @email, @full_name, @phone, @role, @password_hash)
     `);
+
+  if (input.role === "supervisor") {
+    try {
+      await insertSupervisorGreenhouseAccessMssql(id, input.greenhouseIds ?? []);
+    } catch (e) {
+      await pool.request().input("id", sql.UniqueIdentifier, id).query(`DELETE FROM dbo.users WHERE id = @id`);
+      return fail(
+        e instanceof Error ? e.message : "Could not assign greenhouses to this farm manager.",
+      );
+    }
+  }
+
   return ok({ id, email: input.email, role: input.role, fullName: input.fullName });
 }
 

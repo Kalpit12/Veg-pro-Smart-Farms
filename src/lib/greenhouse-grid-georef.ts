@@ -15,7 +15,7 @@ export type LatLng = { lat: number; lng: number };
 export type GreenhouseGeorefKind = "gps-fit" | "track-footprint" | "anchor";
 
 export type GreenhouseGeoref = {
-  /** Predict cell center in WGS84 from bay/column (Scarab-style adjusted coords). */
+  /** Predict cell center in WGS84 from bay/column (GPS-adjusted coords). */
   toGps: (column: number, bay: number) => LatLng;
   medianResidualM: number;
   sampleCount: number;
@@ -192,7 +192,7 @@ function predict(plane: { b0: number; b1: number; b2: number }, col: number, bay
 }
 
 /**
- * Scarab-style: robust linear adjustment of bay/column → GPS using field fixes.
+ * Robust linear adjustment of bay/column → GPS using field fixes.
  * @see Riis & Grum (useR 2006) — robust models adjust coordinates and remove outliers.
  */
 export function fitGreenhouseGeoref(

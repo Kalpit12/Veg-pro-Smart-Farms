@@ -8,6 +8,7 @@ import {
   getSessionFromCookies,
   setSessionCookie,
 } from "@/lib/auth/session";
+import { resolveUserRole } from "@/lib/auth/resolve-user-role";
 import type { Role } from "@/types/db";
 
 export type SignInResult =
@@ -27,9 +28,22 @@ export async function getSessionAction(): Promise<{
   role: Role;
   email: string;
 } | null> {
-  const session = await getSessionFromCookies();
-  if (!session) return null;
-  return { id: session.sub, role: session.role, email: session.email };
+  const backend = getServerDataBackend();
+  if (backend === "mssql") {
+    const session = await getSessionFromCookies();
+    if (!session) return null;
+    return { id: session.sub, role: session.role, email: session.email };
+  }
+  if (backend === "supabase") {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { role } = await resolveUserRole(supabase, user.id, user);
+    return { id: user.id, role, email: user.email ?? "" };
+  }
+  return null;
 }
 
 export async function signInWithPasswordAction(
@@ -47,6 +61,12 @@ export async function signInWithPasswordAction(
       const valid = await verifyMssqlPassword(user, password);
       if (!valid) {
         return { ok: false, error: "Invalid email or password." };
+      }
+      if (!user.is_active) {
+        return {
+          ok: false,
+          error: "This account is inactive. Contact an administrator to restore access.",
+        };
       }
       await setSessionCookie({
         sub: user.id,
@@ -81,13 +101,17 @@ export async function signInWithPasswordAction(
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "Signed in, but no user session was created." };
 
-    const { data: profile } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const { role, is_active } = await resolveUserRole(supabase, user.id, user);
 
-    return { ok: true, role: (profile?.role ?? "worker") as Role };
+    if (!is_active) {
+      await supabase.auth.signOut();
+      return {
+        ok: false,
+        error: "This account is inactive. Contact an administrator to restore access.",
+      };
+    }
+
+    return { ok: true, role };
   } catch (error) {
     return { ok: false, error: networkErrorMessage(error) };
   }

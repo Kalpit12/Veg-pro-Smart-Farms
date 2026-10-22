@@ -3,27 +3,8 @@
  * Usage: node scripts/seed-mssql-users.mjs
  * Optional: SEED_PASSWORD in .env.local (default VegPro2026!)
  */
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 import bcrypt from "bcryptjs";
-import sql from "mssql";
-
-function loadEnvLocal() {
-  const path = resolve(process.cwd(), ".env.local");
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const i = t.indexOf("=");
-    if (i < 1) continue;
-    const key = t.slice(0, i).trim();
-    let val = t.slice(i + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = val;
-  }
-}
+import { connectMssql, loadEnvLocal } from "./mssql-connect.mjs";
 
 loadEnvLocal();
 
@@ -54,17 +35,7 @@ const users = [
   },
 ];
 
-const pool = await sql.connect({
-  server: process.env.MSSQL_SERVER,
-  port: process.env.MSSQL_PORT ? Number(process.env.MSSQL_PORT) : 1433,
-  database: process.env.MSSQL_DATABASE ?? "Scouting",
-  user: process.env.MSSQL_USER,
-  password: process.env.MSSQL_PASSWORD,
-  options: {
-    encrypt: process.env.MSSQL_ENCRYPT !== "false",
-    trustServerCertificate: process.env.MSSQL_TRUST_SERVER_CERTIFICATE !== "false",
-  },
-});
+const { sql, pool } = await connectMssql();
 
 for (const u of users) {
   await pool

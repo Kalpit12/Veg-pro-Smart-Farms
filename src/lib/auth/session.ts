@@ -47,12 +47,18 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
+function sessionCookieSecure() {
+  // Secure cookies are dropped by browsers on http://192.168.x.x.
+  // Set SESSION_COOKIE_SECURE=true only after FDB is served with HTTPS.
+  return process.env.SESSION_COOKIE_SECURE === "true";
+}
+
 export async function setSessionCookie(payload: SessionPayload) {
   const token = await createSessionToken(payload);
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: sessionCookieSecure(),
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_SEC,

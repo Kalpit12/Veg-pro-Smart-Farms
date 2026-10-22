@@ -6,6 +6,10 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv, hasSupabaseServiceRole } from "@/lib/supabase/config";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { mssqlCreateStaffAccountAction } from "@/services/mssql/ops-actions";
+import {
+  normalizeGreenhouseIds,
+  replaceSupervisorGreenhouseAccess,
+} from "@/services/supervisor-access-service";
 import type { Role } from "@/types/db";
 
 export type StaffAccountRole = Extract<Role, "worker" | "supervisor">;
@@ -16,6 +20,8 @@ export type CreateStaffAccountInput = {
   phone: string;
   role: StaffAccountRole;
   password: string;
+  /** Required when role is farm manager (supervisor). */
+  greenhouseIds?: string[];
 };
 
 export type CreateStaffAccountResult =
@@ -75,6 +81,15 @@ export async function createStaffAccountAction(
     return { ok: false, error: "Role must be field worker or farm manager." };
   }
 
+  const greenhouseIds =
+    role === "supervisor" ? normalizeGreenhouseIds(input.greenhouseIds ?? []) : [];
+  if (role === "supervisor" && !greenhouseIds.length) {
+    return {
+      ok: false,
+      error: "Select at least one greenhouse this farm manager can monitor.",
+    };
+  }
+
   if (getServerDataBackend() === "mssql") {
     const res = await mssqlCreateStaffAccountAction({
       fullName,
@@ -82,6 +97,7 @@ export async function createStaffAccountAction(
       phone,
       role,
       password,
+      greenhouseIds,
     });
     if (res.error) return { ok: false, error: res.error.message };
     if (!res.data) return { ok: false, error: "Could not create account." };
@@ -153,6 +169,15 @@ export async function createStaffAccountAction(
       return { ok: false, error: "That email is already on the staff list." };
     }
     return { ok: false, error: profileError.message };
+  }
+
+  if (role === "supervisor") {
+    const access = await replaceSupervisorGreenhouseAccess(created.user.id, greenhouseIds);
+    if (access.error) {
+      await admin.auth.admin.deleteUser(created.user.id);
+      await admin.from("users").delete().eq("id", created.user.id);
+      return { ok: false, error: access.error.message };
+    }
   }
 
   return { ok: true, email, role, fullName };

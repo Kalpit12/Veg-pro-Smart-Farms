@@ -709,7 +709,7 @@ export function ScoutingStopForm({
           Scouting parameters ({SCOUTING_PARAMETERS.length}) — checkbox + scale
         </legend>
         <p className="text-xs text-muted-foreground">
-          Precision scouting (Scarab-style): mark present pests, diseases, and crop health.
+          Precision scouting: mark present pests, diseases, and crop health.
         </p>
         <ul className="space-y-3">
           {SCOUTING_PARAMETERS.map((p) => {

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { LogoutButton } from "@/components/auth/logout-button";
+import { ManagerAssignedSites } from "@/features/manager/manager-assigned-sites";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -253,6 +254,7 @@ export function AppShell({
                 <p className="mt-1 text-xs leading-5 text-muted-foreground sm:text-sm">
                   {workspace.description}
                 </p>
+                {roleMode === "manager" ? <ManagerAssignedSites /> : null}
               </div>
             </div>
           </div>

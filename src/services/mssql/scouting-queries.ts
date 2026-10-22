@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 
 import { fail, ok, toIso } from "@/lib/mssql/result";
+import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
 import { requireServerSession, type ServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import type { CreateScoutingRecordInput } from "@/services/supabase/scouting-service";
@@ -12,6 +13,20 @@ import { isUuid } from "@/lib/uuid";
 
 function canReadAllScouting(session: ServerSession) {
   return session.role === "admin" || session.role === "supervisor";
+}
+
+async function scoutingRecordsScopeClause(session: ServerSession, alias = "r") {
+  if (session.role === "worker") return { clause: `WHERE ${alias}.scout_id = @scoutId`, bindScout: true };
+  if (session.role === "supervisor") {
+    const scope = await sqlSupervisorSiteFilter(
+      session.role,
+      session.id,
+      `${alias}.greenhouse_id`,
+      `${alias}.farm_id`,
+    );
+    return { clause: `WHERE 1=1${scope}`, bindScout: false };
+  }
+  return { clause: "", bindScout: false };
 }
 
 export async function mssqlListCropCategories() {
@@ -195,11 +210,11 @@ export async function mssqlListScoutingRecords(limit = 200) {
   const session = await requireServerSession();
   const pool = await getMssqlPool();
   const request = pool.request().input("limit", sql.Int, limit);
-  let where = "";
-  if (!canReadAllScouting(session)) {
+  const scope = await scoutingRecordsScopeClause(session);
+  if (scope.bindScout) {
     request.input("scoutId", sql.UniqueIdentifier, session.id);
-    where = "WHERE r.scout_id = @scoutId";
   }
+  const where = scope.clause;
   const result = await request.query(`
     SELECT TOP (@limit) r.*,
       f.name AS farm_name, g.name AS greenhouse_name, g.area_ha,
@@ -222,11 +237,13 @@ export async function mssqlListScoutingRecordsSince(since: Date) {
   const request = pool
     .request()
     .input("since", sql.DateTime2, since);
-  let where = "WHERE r.recorded_at >= @since";
-  if (!canReadAllScouting(session)) {
+  const scope = await scoutingRecordsScopeClause(session);
+  if (scope.bindScout) {
     request.input("scoutId", sql.UniqueIdentifier, session.id);
-    where += " AND r.scout_id = @scoutId";
   }
+  const where = scope.clause
+    ? `${scope.clause} AND r.recorded_at >= @since`
+    : "WHERE r.recorded_at >= @since";
   const result = await request.query(`
     SELECT r.*,
       f.name AS farm_name, g.name AS greenhouse_name,
@@ -403,6 +420,13 @@ export async function mssqlCompleteScoutingRound(roundId: string) {
 }
 
 export async function mssqlListScoutingRounds(limit = 50) {
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "r.greenhouse_id",
+    "r.farm_id",
+  );
   const pool = await getMssqlPool();
   const result = await pool.request().input("limit", sql.Int, limit).query(`
     SELECT TOP (@limit) r.*, u.full_name AS scout_name, g.name AS greenhouse_name, f.name AS farm_name
@@ -410,12 +434,20 @@ export async function mssqlListScoutingRounds(limit = 50) {
     INNER JOIN dbo.users u ON u.id = r.scout_id
     INNER JOIN dbo.greenhouses g ON g.id = r.greenhouse_id
     INNER JOIN dbo.farms f ON f.id = r.farm_id
+    WHERE 1=1${scope}
     ORDER BY r.started_at DESC
   `);
   return ok(result.recordset.map(mapRoundRow));
 }
 
 export async function mssqlListScoutingRoundsBetween(from: Date, to: Date, limit = 80) {
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "r.greenhouse_id",
+    "r.farm_id",
+  );
   const pool = await getMssqlPool();
   const result = await pool
     .request()
@@ -428,7 +460,7 @@ export async function mssqlListScoutingRoundsBetween(from: Date, to: Date, limit
       INNER JOIN dbo.users u ON u.id = r.scout_id
       INNER JOIN dbo.greenhouses g ON g.id = r.greenhouse_id
       INNER JOIN dbo.farms f ON f.id = r.farm_id
-      WHERE r.started_at >= @from AND r.started_at <= @to
+      WHERE r.started_at >= @from AND r.started_at <= @to${scope}
       ORDER BY r.started_at DESC
     `);
   return ok(result.recordset.map(mapRoundRow));
@@ -575,12 +607,19 @@ export async function mssqlFinalizeRoundMetrics(
 }
 
 export async function mssqlListGreenhouseAnchors() {
+  const session = await requireServerSession();
+  const scope = await sqlSupervisorSiteFilter(
+    session.role,
+    session.id,
+    "g.id",
+    "g.farm_id",
+  );
   const pool = await getMssqlPool();
   const result = await pool.request().query(`
     SELECT g.id, g.name, g.farm_id, g.latitude, g.longitude, f.name AS farm_name
     FROM dbo.greenhouses g
     INNER JOIN dbo.farms f ON f.id = g.farm_id
-    WHERE g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+    WHERE g.latitude IS NOT NULL AND g.longitude IS NOT NULL${scope}
   `);
   const data = result.recordset.map((row) => ({
     farmId: String(row.farm_id),

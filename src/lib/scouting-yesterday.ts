@@ -5,6 +5,7 @@ import type { ScoutingRoundRow } from "@/services/supabase/scouting-round-servic
 
 export type YesterdayScoutRound = {
   roundId: string;
+  greenhouseId: string;
   greenhouseName: string;
   scoutName: string;
   farmName: string;
@@ -40,6 +41,7 @@ export function roundToYesterdaySummary(
     const r = round as ScoutingRoundRow;
     return {
       roundId: r.id,
+      greenhouseId: r.greenhouse_id,
       greenhouseName: r.greenhouses?.name ?? "—",
       scoutName: r.users?.full_name ?? "Scout",
       farmName: r.farms?.name ?? farmName,
@@ -55,6 +57,7 @@ export function roundToYesterdaySummary(
   const d = round as DemoScoutingRound;
   return {
     roundId: d.id,
+    greenhouseId: d.greenhouseId,
     greenhouseName: d.greenhouseName,
     scoutName: d.scoutName,
     farmName,

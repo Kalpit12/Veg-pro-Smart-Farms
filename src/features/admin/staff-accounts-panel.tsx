@@ -11,11 +11,20 @@ import {
   getStaffProvisioningStatus,
   type StaffAccountRole,
 } from "@/features/admin/create-staff-account-action";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { FarmGreenhouseAccessPicker } from "@/features/admin/farm-greenhouse-access-picker";
+import { setStaffAccountActiveAction } from "@/features/admin/set-staff-active-action";
 import {
-  listStaffAccounts,
-  type StaffAccountRow,
-} from "@/services/supabase/staff-service";
+  getSupervisorGreenhouseAccessAction,
+  listFarmsGreenhousesCatalogAction,
+  setSupervisorGreenhouseAccessAction,
+  type FarmGreenhouseCatalogItem,
+} from "@/features/admin/supervisor-access-actions";
+import { getSessionAction } from "@/features/auth/sign-in-action";
+import { hasConfiguredBackend, hasMssqlEnv, hasSupabaseEnv } from "@/lib/data-backend";
+import { createClient } from "@/lib/supabase/client";
+import { listStaffAccountsAction } from "@/features/admin/list-staff-accounts-action";
+import type { StaffAccountRow } from "@/services/supabase/staff-service";
+import type { Role } from "@/types/db";
 
 function generatePassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -42,25 +51,38 @@ export function StaffAccountsPanel() {
   const [canCreate, setCanCreate] = useState(false);
   const [accounts, setAccounts] = useState<StaffAccountRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<Role | null>(null);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [lastCreated, setLastCreated] = useState<{
     email: string;
     password: string;
     role: StaffAccountRole;
   } | null>(null);
+  const [siteCatalog, setSiteCatalog] = useState<FarmGreenhouseCatalogItem[]>([]);
+  const [createGreenhouseIds, setCreateGreenhouseIds] = useState<string[]>([]);
+  const [accessEdit, setAccessEdit] = useState<{
+    userId: string;
+    name: string;
+    ids: string[];
+  } | null>(null);
+  const [accessBusy, setAccessBusy] = useState(false);
 
   const refreshAccounts = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (!hasConfiguredBackend()) {
       setAccounts([]);
       setLoadingList(false);
       return;
     }
-    const { data, error } = await listStaffAccounts();
+    setLoadingList(true);
+    const { data, error } = await listStaffAccountsAction();
     if (error) {
       toast({
         title: "Could not load staff",
         description: error.message,
         tone: "error",
       });
+      setAccounts([]);
     } else {
       setAccounts((data ?? []) as StaffAccountRow[]);
     }
@@ -76,8 +98,44 @@ export function StaffAccountsPanel() {
       setCanCreate(s.canCreate);
       setSetupMessage(s.message);
     });
+    void (async () => {
+      if (hasMssqlEnv()) {
+        const session = await getSessionAction();
+        if (session) {
+          setCurrentUserId(session.id);
+          setCurrentRole(session.role);
+        }
+        return;
+      }
+      if (!hasSupabaseEnv()) return;
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) return;
+      setCurrentUserId(data.user.id);
+      const { data: profile } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+      if (profile?.role) setCurrentRole(profile.role as Role);
+    })();
     void refreshAccounts();
   }, [refreshAccounts]);
+
+  useEffect(() => {
+    if (currentRole !== "admin" || !hasConfiguredBackend()) return;
+    void listFarmsGreenhousesCatalogAction().then((result) => {
+      if (result.error) {
+        toast({
+          title: "Could not load farms",
+          description: result.error.message,
+          tone: "error",
+        });
+        return;
+      }
+      setSiteCatalog(result.data);
+    });
+  }, [currentRole, toast]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,6 +149,7 @@ export function StaffAccountsPanel() {
         phone,
         role,
         password,
+        greenhouseIds: role === "supervisor" ? createGreenhouseIds : undefined,
       });
       if (!result.ok) {
         toast({ title: "Account not created", description: result.error, tone: "error" });
@@ -106,9 +165,36 @@ export function StaffAccountsPanel() {
       setEmail("");
       setPhone("");
       setPassword(generatePassword());
+      setCreateGreenhouseIds([]);
       await refreshAccounts();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onToggleActive = async (row: StaffAccountRow, nextActive: boolean) => {
+    if (statusBusyId) return;
+    setStatusBusyId(row.id);
+    try {
+      const result = await setStaffAccountActiveAction(row.id, nextActive);
+      if (!result.ok) {
+        toast({
+          title: nextActive ? "Could not activate" : "Could not deactivate",
+          description: result.error,
+          tone: "error",
+        });
+        return;
+      }
+      toast({
+        title: nextActive ? "Account activated" : "Account deactivated",
+        description: nextActive
+          ? `${row.full_name} can sign in again.`
+          : `${row.full_name} can no longer sign in until reactivated.`,
+        tone: "success",
+      });
+      await refreshAccounts();
+    } finally {
+      setStatusBusyId(null);
     }
   };
 
@@ -121,6 +207,40 @@ export function StaffAccountsPanel() {
     }
   };
 
+  const canManageStatus = currentRole === "admin";
+
+  const openAccessEditor = async (row: StaffAccountRow) => {
+    const { data, error } = await getSupervisorGreenhouseAccessAction(row.id);
+    if (error) {
+      toast({ title: "Could not load sites", description: error.message, tone: "error" });
+      return;
+    }
+    setAccessEdit({ userId: row.id, name: row.full_name, ids: data });
+  };
+
+  const saveAccessEditor = async () => {
+    if (!accessEdit || accessBusy) return;
+    setAccessBusy(true);
+    try {
+      const result = await setSupervisorGreenhouseAccessAction(
+        accessEdit.userId,
+        accessEdit.ids,
+      );
+      if (!result.ok) {
+        toast({ title: "Could not save sites", description: result.error, tone: "error" });
+        return;
+      }
+      toast({
+        title: "Sites updated",
+        description: `${accessEdit.name} now sees ${accessEdit.ids.length} greenhouse(s).`,
+        tone: "success",
+      });
+      setAccessEdit(null);
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
   return (
     <section className="space-y-4">
       <div className="glass-card space-y-4 rounded-2xl p-4">
@@ -129,8 +249,8 @@ export function StaffAccountsPanel() {
           <div>
             <h2 className="text-lg font-semibold">Create staff accounts</h2>
             <p className="text-sm text-muted-foreground">
-              Admins can add field workers and farm managers. They sign in on the matching
-              Role at login (Field worker or Farm manager).
+              Admins can add field workers and farm managers. For farm managers, choose which
+              farms and greenhouses they can monitor.
             </p>
           </div>
         </div>
@@ -208,6 +328,17 @@ export function StaffAccountsPanel() {
               </Button>
             </div>
           </label>
+          {role === "supervisor" ? (
+            <div className="space-y-2 sm:col-span-2">
+              <p className="text-sm font-medium">Farms &amp; greenhouses this manager can see</p>
+              <FarmGreenhouseAccessPicker
+                catalog={siteCatalog}
+                value={createGreenhouseIds}
+                onChange={setCreateGreenhouseIds}
+                disabled={busy || !canCreate}
+              />
+            </div>
+          ) : null}
           <div className="flex items-end sm:col-span-2">
             <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={busy || !canCreate}>
               {busy ? "Creating…" : "Create account"}
@@ -244,29 +375,114 @@ export function StaffAccountsPanel() {
           <p className="px-4 py-6 text-sm text-muted-foreground">No staff accounts yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border/70 text-xs text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Name</th>
                   <th className="px-4 py-2 font-medium">Email</th>
                   <th className="px-4 py-2 font-medium">Role</th>
                   <th className="px-4 py-2 font-medium">Phone</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  {canManageStatus ? (
+                    <>
+                      <th className="px-4 py-2 font-medium">Monitored sites</th>
+                      <th className="px-4 py-2 font-medium">Account</th>
+                    </>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((row) => (
-                  <tr key={row.id} className="border-b border-border/50">
-                    <td className="px-4 py-3 font-medium">{row.full_name}</td>
-                    <td className="px-4 py-3">{row.email}</td>
-                    <td className="px-4 py-3">{roleLabel(row.role)}</td>
-                    <td className="px-4 py-3">{row.phone ?? "—"}</td>
-                  </tr>
-                ))}
+                {accounts.map((row) => {
+                  const active = row.is_active !== false;
+                  const isSelf = currentUserId === row.id;
+                  return (
+                    <tr key={row.id} className="border-b border-border/50">
+                      <td className="px-4 py-3 font-medium">{row.full_name}</td>
+                      <td className="px-4 py-3">{row.email}</td>
+                      <td className="px-4 py-3">{roleLabel(row.role)}</td>
+                      <td className="px-4 py-3">{row.phone ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={
+                            active
+                              ? "inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
+                              : "inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                          }
+                        >
+                          {active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      {canManageStatus ? (
+                        <>
+                          <td className="px-4 py-3">
+                            {row.role === "supervisor" ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void openAccessEditor(row)}
+                              >
+                                Edit sites
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {isSelf ? (
+                              <span className="text-xs text-muted-foreground">Your account</span>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant={active ? "outline" : "default"}
+                                size="sm"
+                                disabled={statusBusyId === row.id}
+                                onClick={() => void onToggleActive(row, !active)}
+                              >
+                                {statusBusyId === row.id
+                                  ? "Saving…"
+                                  : active
+                                    ? "Deactivate"
+                                    : "Activate"}
+                              </Button>
+                            )}
+                          </td>
+                        </>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {accessEdit ? (
+        <div className="glass-card space-y-3 rounded-2xl border border-primary/30 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold">Monitored sites — {accessEdit.name}</h3>
+              <p className="text-xs text-muted-foreground">
+                Only selected greenhouses (and their farms) appear in this farm manager&apos;s
+                dashboards and maps.
+              </p>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setAccessEdit(null)}>
+              Close
+            </Button>
+          </div>
+          <FarmGreenhouseAccessPicker
+            catalog={siteCatalog}
+            value={accessEdit.ids}
+            onChange={(ids) => setAccessEdit((prev) => (prev ? { ...prev, ids } : prev))}
+            disabled={accessBusy}
+          />
+          <Button type="button" disabled={accessBusy} onClick={() => void saveAccessEditor()}>
+            {accessBusy ? "Saving…" : "Save sites"}
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }

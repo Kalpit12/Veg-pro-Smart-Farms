@@ -28,6 +28,7 @@ import {
   pendingWalkFromSession,
   type PendingWalkInfo,
 } from "@/lib/scouting-walk-pending";
+import { notifyScoutingWalkFinished } from "@/lib/scouting-walk-events";
 import { finalizeRoundMetrics } from "@/services/supabase/scouting-route-service";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
@@ -478,6 +479,7 @@ export function ScoutingRoundBar() {
           description: `${formatDistance(distanceM)} · ${formatDuration(durationS)} · ${coverage.coveragePct}% coverage`,
           tone: "success",
         });
+        notifyScoutingWalkFinished();
         return;
       }
 
@@ -495,6 +497,7 @@ export function ScoutingRoundBar() {
             : "Will complete on the server when you reconnect.",
           tone: "default",
         });
+        notifyScoutingWalkFinished();
         return;
       }
 
@@ -514,6 +517,7 @@ export function ScoutingRoundBar() {
             description: "No signal — will sync when you reconnect.",
             tone: "default",
           });
+          notifyScoutingWalkFinished();
           return;
         }
         throw error;
@@ -526,6 +530,7 @@ export function ScoutingRoundBar() {
         description: `${formatDistance(distanceM)} · ${formatDuration(durationS)} · ${coverage.coveragePct}% coverage`,
         tone: "success",
       });
+      notifyScoutingWalkFinished();
     } catch (e) {
       toast({
         title: "Could not finish walking",

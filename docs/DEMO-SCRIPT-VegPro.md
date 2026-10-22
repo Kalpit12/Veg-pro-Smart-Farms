@@ -84,9 +84,9 @@ Scroll to **Live GPS tracking**.
 
 ### 1c. Scout route round (1 min)
 
-Point to **Scout route (Scarab-style)**.
+Point to **Scout route**.
 
-> “Before recording stops, the scout **starts a round** — similar to a Scarab scouting session. Each stop they save is linked to that round with a timestamp and GPS. When they **complete the round**, the route is locked for reporting.”
+> “Before recording stops, the scout **starts a round**. Each stop they save is linked to that round with a timestamp and GPS. When they **complete the round**, the route is locked for reporting.”
 
 **Action:** Click **Start round**.
 
@@ -187,7 +187,7 @@ If Supabase is live: save **one more stop** on the worker device.
 | Rating | 1–5 | Severity / pressure |
 | GPS | -1.29210, 36.82190 | Route map & audit trail |
 | Parameter observations | Thrips present, rating 4 | Multi-parameter scouting |
-| Round ID | Linked session | Scarab-style route & timing |
+| Round ID | Linked session | Route & timing per session |
 | Notes | Optional text | Scout comments |
 
 > “We also capture **infestation hotspots** (pest type, problem description, severity, GPS) and **spray logs** (product, greenhouse, time) through the same Field work hub — so scouting, escalation, and treatment sit in one platform.”
@@ -208,7 +208,7 @@ If Supabase is live: save **one more stop** on the worker device.
 |------|-----|-----|----------------|
 | 1 | Worker | Open Field work | “Scout’s daily screen.” |
 | 2 | Worker | GPS / Override GH | “Nearest Bemack GH assigned automatically.” |
-| 3 | Worker | Start round | “Scarab-style session starts.” |
+| 3 | Worker | Start round | “Scouting session starts.” |
 | 4 | Worker | Scout stop → Save | “Structured Bemack data + GPS on save.” |
 | 5 | Manager | Dashboard | “Stops today KPI.” |
 | 6 | Manager | Scouting → route map | “GPS path and stops by GH.” |
@@ -228,8 +228,8 @@ A: The demo supports offline/local storage. Production uses Supabase with sync w
 **Q: How accurate is greenhouse assignment?**  
 A: We use haversine distance to the nearest of 17 anchored GH positions. For production, anchors can be set to your surveyed GH coordinates.
 
-**Q: Does this replace Scarab?**  
-A: It mirrors Scarab-style **rounds, routes, and stop timing** while integrating infestation, spray, and manager dashboards in one VegPro platform.
+**Q: How does this compare to legacy scouting tools?**  
+A: VegPro supports **rounds, routes, and stop timing** while integrating infestation, spray, and manager dashboards in one platform.
 
 **Q: What about other farms besides Bemack?**  
 A: The data model is multi-farm; this demo is seeded for Bemack per your spreadsheet and SOW scope.

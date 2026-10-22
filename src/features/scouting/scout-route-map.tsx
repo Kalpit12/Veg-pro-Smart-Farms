@@ -362,7 +362,7 @@ export function ScoutRouteMap() {
         <div>
           <h2 className="text-lg font-semibold">Scout routes</h2>
           <p className="text-sm text-muted-foreground">
-            Scarab-style: green outline = greenhouse grid; pins are GPS-adjusted to bay×column.
+            Green outline = greenhouse grid; pins are GPS-adjusted to bay×column.
             Blue line = scout walk track only (not visit order).
           </p>
         </div>

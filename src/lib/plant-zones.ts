@@ -4,6 +4,14 @@ export type PlantZoneId = "top" | "middle" | "lower";
 
 export type IssueKind = "pest" | "disease";
 
+/** Worker confirms no pest or no disease on this plant zone. */
+export const NO_PEST = "NO Pest";
+export const NO_DISEASE = "NO Disease";
+
+export function isNoIssueMarker(name: string) {
+  return name === NO_PEST || name === NO_DISEASE;
+}
+
 export type DiseaseSeverity = 1 | 2 | 3;
 
 export type PlantZoneConfig = {

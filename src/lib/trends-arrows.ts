@@ -13,7 +13,7 @@ export type TrendsArrowState = {
   okayPct: number;
 };
 
-/** Convert scouting rating (1–5) to Scarab arrow display. */
+/** Convert scouting rating (1–5) to trend arrow display. */
 export function ratingToTrendArrows(rating: number): TrendsArrowState {
   const clamped = Math.min(5, Math.max(1, rating));
   const badPct = Math.round(((clamped - 1) / 4) * 100);

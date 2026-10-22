@@ -15,7 +15,7 @@ function noise(a: number, b: number) {
 }
 
 /**
- * Demo worker history + Scarab-style rounds so Worker trends is useful offline.
+ * Demo worker history + scouting rounds so Worker trends is useful offline.
  */
 export function buildDemoWorkerTrends(days: number): {
   workers: { id: string; name: string }[];
@@ -44,7 +44,7 @@ export function buildDemoWorkerTrends(days: number): {
 
       const roll = noise(wi + 7, d + 3);
 
-      // Scarab-style rounds for "scout" workers (first 5)
+      // Demo scouting rounds for "scout" workers (first 5)
       if (wi < 5 && noise(wi + 1, d + 2) > 0.55) {
         const durationS = Math.round(20 * 60 + noise(wi, d + 8) * 70 * 60);
         const stopCount = 3 + Math.floor(noise(wi + 3, d) * 10);

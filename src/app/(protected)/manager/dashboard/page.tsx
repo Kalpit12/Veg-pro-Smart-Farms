@@ -1,4 +1,5 @@
 import { DashboardPageHeader } from "@/features/dashboard/components/dashboard-page-header";
+import { YesterdayScoutedGreenhouses } from "@/features/dashboard/components/yesterday-scouted-greenhouses";
 import { LiveActivityFeed } from "@/features/dashboard/components/live-activity-feed";
 import { ManagerQuickActions } from "@/features/dashboard/components/manager-quick-actions";
 import { MetricsGrid } from "@/features/dashboard/components/metrics-grid";
@@ -13,6 +14,10 @@ export default function ManagerDashboardPage() {
         variant="simple"
         title="Today's priorities"
         description="Hotspots and sprays that need action in the field."
+      />
+      <YesterdayScoutedGreenhouses
+        scope="assigned"
+        scoutingBasePath="/manager/scouting"
       />
       <MetricsGrid audience="manager" />
       <PendingInfestationQueue compact />

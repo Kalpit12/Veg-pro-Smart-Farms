@@ -6,6 +6,7 @@ export interface AppUser {
   email: string;
   phone: string | null;
   role: Role;
+  is_active: boolean;
   created_at: string;
 }
 

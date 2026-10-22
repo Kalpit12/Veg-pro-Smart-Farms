@@ -4,9 +4,15 @@ import { PUBLIC_ROUTES, ROLE_ALLOWED_PREFIXES, ROLE_ROUTES } from "@/lib/constan
 import type { Role } from "@/types/db";
 import { getServerDataBackend } from "@/lib/data-backend";
 import { getSessionFromRequest } from "@/lib/auth/session";
+import { resolveUserRole, type SupabaseReader } from "@/lib/auth/resolve-user-role";
 import { getSupabaseAnonKey } from "@/lib/supabase/config";
 
 export async function middleware(request: NextRequest) {
+  // Server Actions POST with Next-Action; avoid redirects / extra auth work on the wire.
+  if (request.headers.has("next-action")) {
+    return NextResponse.next({ request });
+  }
+
   const backend = getServerDataBackend();
 
   if (backend === "mssql") {
@@ -87,13 +93,18 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user) {
-    const { data: profile } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const { role, is_active } = await resolveUserRole(
+      supabase as unknown as SupabaseReader,
+      user.id,
+      user,
+    );
 
-    const role = (profile?.role ?? "worker") as Role;
+    if (!is_active) {
+      await supabase.auth.signOut();
+      const loginUrl = new URL("/auth/login", request.url);
+      loginUrl.searchParams.set("inactive", "1");
+      return NextResponse.redirect(loginUrl);
+    }
     if (request.nextUrl.pathname === "/") {
       return NextResponse.redirect(new URL(ROLE_ROUTES[role], request.url));
     }

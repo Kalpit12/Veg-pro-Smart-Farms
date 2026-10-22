@@ -1,4 +1,4 @@
--- Bemack precision scouting (VegPro / Scarab-style data model)
+-- Bemack precision scouting (VegPro scouting data model)
 
 create type scouting_issue_type as enum ('disease', 'pest');
 create type scouting_parameter_group as enum ('pest', 'disease', 'crop_health');

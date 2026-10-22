@@ -28,6 +28,8 @@ import {
   type TrendsSprayRow,
 } from "@/lib/trends-arrows";
 import { cn } from "@/lib/utils";
+import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
+import { compareStarGreenhouseName } from "@/lib/bemack-master-data";
 import { listSpraysForHistory } from "@/services/supabase/spray-service";
 
 const LOOKBACK_OPTIONS = [
@@ -116,8 +118,17 @@ function FilterSelect({
   );
 }
 
-export function TrendsGrid() {
+export function TrendsGrid({
+  scope = "all",
+  portalBase = "/admin",
+}: {
+  scope?: "all" | "assigned";
+  portalBase?: "/admin" | "/manager";
+}) {
   const [days, setDays] = useState<Lookback>(14);
+  const [assignedGreenhouses, setAssignedGreenhouses] = useState<
+    { id: string; name: string }[] | null
+  >(scope === "assigned" ? null : []);
   const [issueType, setIssueType] = useState("all");
   const [issue, setIssue] = useState("all");
   const [variety, setVariety] = useState("all");
@@ -128,6 +139,22 @@ export function TrendsGrid() {
   const mode = days >= 90 ? "week" : "day";
   const { records, loading } = useScoutingData(days);
 
+  useEffect(() => {
+    if (scope !== "assigned") return;
+    void getMyAssignedSitesAction().then((result) => {
+      const list = (result.data ?? []).flatMap((farm) =>
+        farm.greenhouses.map((g) => ({ id: g.id, name: g.name })),
+      );
+      list.sort((a, b) => compareStarGreenhouseName(a.name, b.name));
+      setAssignedGreenhouses(list);
+    });
+  }, [scope]);
+
+  const assignedIdSet = useMemo(() => {
+    if (scope !== "assigned" || !assignedGreenhouses) return null;
+    return new Set(assignedGreenhouses.map((g) => g.id));
+  }, [scope, assignedGreenhouses]);
+
   const loadSprays = useCallback(async () => {
     if (!hasSupabaseEnv()) {
       setSprays(buildDemoSprayRows(days));
@@ -135,32 +162,42 @@ export function TrendsGrid() {
     }
     const since = subDays(new Date(), days);
     const { data } = await listSpraysForHistory({ since, limit: 1000 });
-    setSprays(
-      (data ?? [])
-        .filter((s) => s.greenhouse_id)
-        .map((s) => ({
-          greenhouseId: s.greenhouse_id as string,
-          sprayedAt: s.created_at,
-        })),
-    );
-  }, [days]);
+    let rows = (data ?? [])
+      .filter((s) => s.greenhouse_id)
+      .map((s) => ({
+        greenhouseId: s.greenhouse_id as string,
+        sprayedAt: s.created_at,
+      }));
+    if (assignedIdSet) {
+      rows = rows.filter((s) => assignedIdSet.has(s.greenhouseId));
+    }
+    setSprays(rows);
+  }, [days, assignedIdSet]);
 
   useEffect(() => {
     void loadSprays();
   }, [loadSprays]);
 
   const sourceRows: TrendsScoutingRow[] = useMemo(() => {
-    if (!hasSupabaseEnv()) return buildDemoTrendsRows(days);
-    return records.map((r) => ({
-      greenhouseId: r.greenhouseId,
-      greenhouseName: r.greenhouseName,
-      recordedAt: r.recordedAt,
-      rating: r.rating,
-      issueType: r.issueType,
-      issue: r.issue,
-      variety: r.variety,
-    }));
-  }, [days, records]);
+    let rows: TrendsScoutingRow[];
+    if (!hasSupabaseEnv()) {
+      rows = buildDemoTrendsRows(days);
+    } else {
+      rows = records.map((r) => ({
+        greenhouseId: r.greenhouseId,
+        greenhouseName: r.greenhouseName,
+        recordedAt: r.recordedAt,
+        rating: r.rating,
+        issueType: r.issueType,
+        issue: r.issue,
+        variety: r.variety,
+      }));
+    }
+    if (assignedIdSet) {
+      rows = rows.filter((r) => assignedIdSet.has(r.greenhouseId));
+    }
+    return rows;
+  }, [days, records, assignedIdSet]);
 
   const filterOptions = useMemo(
     () => collectFilterOptions(sourceRows),
@@ -187,27 +224,50 @@ export function TrendsGrid() {
 
   const model = useMemo(() => {
     const dates = listTrendDateKeys(days, mode);
-    const greenhouses = bemackTrendGreenhouses();
+    const greenhouses =
+      scope === "assigned" ? (assignedGreenhouses ?? []) : bemackTrendGreenhouses();
     const dateLabels = buildTrendDateLabels(dates, mode);
 
-    const liveEmpty =
-      hasSupabaseEnv() && sourceRows.length === 0;
-    const rows = liveEmpty ? buildDemoTrendsRows(days) : filteredRows;
-    const sprayRows =
-      !hasSupabaseEnv() || liveEmpty ? buildDemoSprayRows(days) : sprays;
+    const scoped = scope === "assigned";
+    const liveEmpty = hasSupabaseEnv() && sourceRows.length === 0;
+    const useDemoFallback = !scoped && (!hasSupabaseEnv() || liveEmpty);
 
-    const rowsForGrid = liveEmpty
+    const rows = useDemoFallback ? buildDemoTrendsRows(days) : filteredRows;
+    const sprayRows = useDemoFallback ? buildDemoSprayRows(days) : sprays;
+
+    let rowsForGrid = useDemoFallback
       ? filterTrendsRows(rows, { issueType, issue, variety })
       : rows;
+
+    if (assignedIdSet) {
+      rowsForGrid = rowsForGrid.filter((r) => assignedIdSet.has(r.greenhouseId));
+    }
+
+    let sprayForGrid = sprayRows;
+    if (assignedIdSet) {
+      sprayForGrid = sprayRows.filter((s) => assignedIdSet.has(s.greenhouseId));
+    }
 
     return buildTrendsGrid(rowsForGrid, {
       dates,
       greenhouses,
       mode,
-      sprays: sprayRows,
+      sprays: sprayForGrid,
       dateLabels,
     });
-  }, [days, mode, filteredRows, sprays, issueType, issue, variety, sourceRows.length]);
+  }, [
+    days,
+    mode,
+    filteredRows,
+    sprays,
+    issueType,
+    issue,
+    variety,
+    sourceRows.length,
+    scope,
+    assignedGreenhouses,
+    assignedIdSet,
+  ]);
 
   const sortedGreenhouses = useMemo(() => {
     const latest = model.dates[model.dates.length - 1];
@@ -226,13 +286,14 @@ export function TrendsGrid() {
     return list;
   }, [model, sortOrder, redOnly]);
 
-  if (loading && hasSupabaseEnv()) {
+  if ((loading && hasSupabaseEnv()) || (scope === "assigned" && assignedGreenhouses === null)) {
     return <Skeleton className="h-96 w-full rounded-2xl" />;
   }
 
   const latestDate = model.dates[model.dates.length - 1];
   const { summary } = model;
-  const showingDemoFallback = !hasSupabaseEnv() || sourceRows.length === 0;
+  const showingDemoFallback =
+    scope !== "assigned" && (!hasSupabaseEnv() || sourceRows.length === 0);
 
   return (
     <div className="space-y-4">
@@ -416,14 +477,14 @@ export function TrendsGrid() {
                               <span>Not scouted in range</span>
                             )}
                             <Link
-                              href={`/admin/history?greenhouse=${encodeURIComponent(gh.id)}`}
+                              href={`${portalBase}/history?greenhouse=${encodeURIComponent(gh.id)}`}
                               className="inline-flex items-center gap-0.5 text-primary hover:underline"
                             >
                               History
                               <ExternalLink className="size-2.5" />
                             </Link>
                             <Link
-                              href="/admin/map"
+                              href={`${portalBase}/map`}
                               className="inline-flex items-center gap-0.5 text-primary hover:underline"
                             >
                               <MapPin className="size-2.5" />
@@ -476,7 +537,7 @@ export function TrendsGrid() {
           : ""}
         . Empty cells (·) mean not scouted — not necessarily clean.
         {!hasSupabaseEnv() || showingDemoFallback
-          ? " Showing demo Scarab-style trends."
+          ? " Showing demo trend data."
           : null}
       </p>
     </div>

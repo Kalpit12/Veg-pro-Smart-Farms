@@ -177,7 +177,7 @@ export function WorkerTrendsPanel() {
         <div>
           <h2 className="text-lg font-semibold">Worker trends</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Scarab-style scout performance: time, coverage, houses, route quality,
+            Scout performance: time, coverage, houses, route quality,
             and full history.
           </p>
         </div>

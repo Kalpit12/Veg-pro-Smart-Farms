@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Square } from "lucide-react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -10,14 +11,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { SCOUTING_WALK_FINISHED_EVENT } from "@/lib/scouting-walk-events";
+import {
+  isScoutingWalkEngaged,
+  useScoutingSessionStore,
+} from "@/store/scouting-session-store";
+import { useScoutingStore } from "@/store/scouting-store";
+import { hasConfiguredBackend } from "@/lib/data-backend";
 import { resolveScoutCoords } from "@/lib/cell-gps";
 import { captureGps, formatGps } from "@/lib/gps";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
 import {
+  DISEASE_OPTIONS,
   DISEASE_SEVERITY_META,
-  issueAllowedInZone,
   issueLabel,
-  issuesForPlantZone,
+  isNoIssueMarker,
+  NO_DISEASE,
+  NO_PEST,
+  PEST_OPTIONS,
   pestCountToSeverity,
   preferredZoneForIssue,
   PLANT_ZONES,
@@ -37,6 +48,7 @@ import { uploadActivityEvidence } from "@/services/supabase/storage-service";
 import {
   formatScoutHandoffNotes,
   scoutRatingToDiseaseSeverity,
+  type ScoutCellLocation,
   type ScoutObservationHandoff,
 } from "@/lib/scout-observation-flow";
 
@@ -53,68 +65,116 @@ const PlantViewer = dynamic(
   },
 );
 
-const schema = z
-  .object({
-    zone: z.enum(["top", "middle", "lower"]),
-    kind: z.enum(["pest", "disease"]),
-    issue_name: z.string().trim().min(2, "Select a pest or disease"),
-    count: z.number().int().min(1).max(9999).optional(),
-    severity: z.number().min(1).max(3).optional(),
-    notes: z.string().trim().optional(),
-  })
-  .superRefine((values, ctx) => {
-    if (values.kind === "pest") {
-      if (values.count == null || values.count < 1) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["count"],
-          message: "Enter how many pests you counted",
-        });
-      }
-    } else if (values.severity == null || values.severity < 1 || values.severity > 3) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["severity"],
-        message: "Pick disease severity 1–3",
-      });
-    }
-  });
+const schema = z.object({
+  zone: z.enum(["top", "middle", "lower"]),
+  notes: z.string().trim().optional(),
+});
 
 type FormValues = z.infer<typeof schema>;
 
+type ReportLine =
+  | { kind: "pest"; name: string; count: number }
+  | { kind: "disease"; name: string; severity: DiseaseSeverity };
+
+function describeReportLine(line: ReportLine, zoneLabel: string) {
+  const zone = zoneLabel.toLowerCase();
+  if (line.kind === "pest") {
+    if (line.name === NO_PEST) {
+      return {
+        pest_type: NO_PEST,
+        problem: `No pest on ${zone}`,
+        severityForDb: 1,
+      };
+    }
+    return {
+      pest_type: line.name,
+      problem: `Pest count: ${line.count} on ${zone}`,
+      severityForDb: pestCountToSeverity(line.count),
+    };
+  }
+  if (line.name === NO_DISEASE) {
+    return {
+      pest_type: NO_DISEASE,
+      problem: `No disease on ${zone}`,
+      severityForDb: 1,
+    };
+  }
+  return {
+    pest_type: line.name,
+    problem: `Disease severity ${line.severity}/3 (${DISEASE_SEVERITY_META[line.severity].label}) on ${zone}`,
+    severityForDb: line.severity,
+  };
+}
+
 export function ReportInfestationForm({
   onSuccess,
+  onWalkFinished,
   fromObservation,
+  initialCell,
 }: {
   onSuccess?: () => void;
+  /** Called after the greenhouse walk is completed successfully. */
+  onWalkFinished?: () => void;
   fromObservation?: ScoutObservationHandoff | null;
+  /** Bay × column from the heat map (walk-rows flow). */
+  initialCell?: ScoutCellLocation | null;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [gpsLabel, setGpsLabel] = useState("Will capture on submit");
   const [file, setFile] = useState<File | null>(null);
   const [showPlantPicker, setShowPlantPicker] = useState(true);
+  const [logPest, setLogPest] = useState(false);
+  const [logDisease, setLogDisease] = useState(false);
+  const [selectedPests, setSelectedPests] = useState<string[]>([]);
+  const [selectedDiseases, setSelectedDiseases] = useState<string[]>([]);
+  const [pestCount, setPestCount] = useState(1);
+  const [diseaseSeverity, setDiseaseSeverity] = useState<DiseaseSeverity>(2);
   const kindStepRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const scan = useScanStore();
   const resumeHotspot = useResumeHotspotStore((s) => s.hotspot);
   const addDemoHotspot = useFieldOpsStore((s) => s.addDemoHotspot);
   const enqueueInfestation = useFieldWriteQueueStore((s) => s.enqueueInfestation);
+  const session = useScoutingSessionStore((s) => s.session);
+  const walkEngaged = useScoutingSessionStore((s) => s.walkEngaged);
+  const activeRoundId = useScoutingStore((s) => s.activeRoundId);
+  const canFinishWalk = isScoutingWalkEngaged(
+    walkEngaged,
+    session,
+    activeRoundId,
+    hasConfiguredBackend(),
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      issue_name: "",
       notes: "",
     },
   });
 
   const zoneId = form.watch("zone") as PlantZoneId | undefined;
-  const kind = form.watch("kind") as IssueKind | undefined;
-  const issueName = form.watch("issue_name");
-  const severity = form.watch("severity") as DiseaseSeverity | undefined;
   const zone = zoneId ? PLANT_ZONES[zoneId] : null;
+  const pestOptions = PEST_OPTIONS;
+  const diseaseOptions = DISEASE_OPTIONS;
+  const hasCountablePests =
+    logPest && selectedPests.some((name) => name !== NO_PEST);
+  const hasRatedDiseases =
+    logDisease && selectedDiseases.some((name) => name !== NO_DISEASE);
+  const readyToSubmit =
+    Boolean(zoneId) &&
+    (logPest || logDisease) &&
+    (!logPest || selectedPests.length > 0) &&
+    (!logDisease || selectedDiseases.length > 0);
 
-  const options = zoneId && kind ? issuesForPlantZone(kind, zoneId) : [];
+  const mapCell = useMemo(() => {
+    if (fromObservation) {
+      return { column: fromObservation.column, bay: fromObservation.bay };
+    }
+    if (initialCell) {
+      return { column: initialCell.column, bay: initialCell.bay };
+    }
+    return null;
+  }, [fromObservation, initialCell]);
 
   const severityButtons = useMemo(
     () =>
@@ -125,15 +185,99 @@ export function ReportInfestationForm({
     [],
   );
 
+  const resetIssueSelections = () => {
+    setLogPest(false);
+    setLogDisease(false);
+    setSelectedPests([]);
+    setSelectedDiseases([]);
+    setPestCount(1);
+    setDiseaseSeverity(2);
+  };
+
+  const resetAfterSuccess = () => {
+    form.reset({ notes: "" });
+    resetIssueSelections();
+    setFile(null);
+    setShowPlantPicker(true);
+  };
+
   const handleZoneSelect = (id: PlantZoneId) => {
     form.setValue("zone", id, { shouldValidate: true });
-    const current = form.getValues("issue_name");
-    const currentKind = form.getValues("kind") as IssueKind | undefined;
-    if (current && currentKind && !issueAllowedInZone(current, id)) {
-      form.setValue("issue_name", "", { shouldValidate: false });
-    }
-    // Collapse the tall plant so Pest / Disease is on-screen without scrolling.
     setShowPlantPicker(false);
+  };
+
+  const toggleLogKind = (kind: IssueKind) => {
+    if (kind === "pest") {
+      setLogPest((on) => {
+        if (on) setSelectedPests([]);
+        return !on;
+      });
+      return;
+    }
+    setLogDisease((on) => {
+      if (on) setSelectedDiseases([]);
+      return !on;
+    });
+  };
+
+  const togglePestSelection = (name: string) => {
+    if (name === NO_PEST) {
+      setSelectedPests((prev) => (prev.includes(NO_PEST) ? [] : [NO_PEST]));
+      return;
+    }
+    setSelectedPests((prev) => {
+      const base = prev.filter((item) => item !== NO_PEST);
+      if (base.includes(name)) return base.filter((item) => item !== name);
+      return [...base, name];
+    });
+  };
+
+  const toggleDiseaseSelection = (name: string) => {
+    if (name === NO_DISEASE) {
+      setSelectedDiseases((prev) => (prev.includes(NO_DISEASE) ? [] : [NO_DISEASE]));
+      return;
+    }
+    setSelectedDiseases((prev) => {
+      const base = prev.filter((item) => item !== NO_DISEASE);
+      if (base.includes(name)) return base.filter((item) => item !== name);
+      return [...base, name];
+    });
+  };
+
+  const buildReportLines = (): ReportLine[] => {
+    const lines: ReportLine[] = [];
+    if (logPest) {
+      for (const name of selectedPests) {
+        if (name === NO_PEST) lines.push({ kind: "pest", name, count: 0 });
+        else lines.push({ kind: "pest", name, count: pestCount });
+      }
+    }
+    if (logDisease) {
+      for (const name of selectedDiseases) {
+        if (name === NO_DISEASE) {
+          lines.push({ kind: "disease", name, severity: 1 });
+        } else {
+          lines.push({ kind: "disease", name, severity: diseaseSeverity });
+        }
+      }
+    }
+    return lines;
+  };
+
+  const validateMultiLog = (): string | null => {
+    if (!logPest && !logDisease) {
+      return "Turn on Pest and/or Disease for this plant zone.";
+    }
+    if (logPest && selectedPests.length === 0) {
+      return "Select at least one pest (or NO Pest).";
+    }
+    if (logDisease && selectedDiseases.length === 0) {
+      return "Select at least one disease (or NO Disease).";
+    }
+    if (hasCountablePests && (!Number.isFinite(pestCount) || pestCount < 1)) {
+      return "Enter how many pests you counted.";
+    }
+    return null;
   };
 
   useEffect(() => {
@@ -144,45 +288,34 @@ export function ReportInfestationForm({
     return () => window.cancelAnimationFrame(id);
   }, [zoneId, showPlantPicker]);
 
-  const handleKindSelect = (next: IssueKind) => {
-    const prev = form.getValues("kind");
-    form.setValue("kind", next, { shouldValidate: true });
-    if (prev !== next) {
-      form.setValue("issue_name", "", { shouldValidate: false });
-    }
-    if (next === "pest") {
-      form.setValue("severity", undefined);
-      form.setValue("count", form.getValues("count") ?? 1);
-    } else {
-      form.setValue("count", undefined);
-      form.setValue("severity", form.getValues("severity") ?? 2);
-    }
-  };
+  useEffect(() => {
+    if (!onWalkFinished) return;
+    const onFinished = () => onWalkFinished();
+    window.addEventListener(SCOUTING_WALK_FINISHED_EVENT, onFinished);
+    return () => window.removeEventListener(SCOUTING_WALK_FINISHED_EVENT, onFinished);
+  }, [onWalkFinished]);
 
   useEffect(() => {
     if (!fromObservation) return;
+    resetIssueSelections();
     const nextKind = fromObservation.issueType;
-    form.setValue("kind", nextKind, { shouldValidate: true });
     if (nextKind === "pest") {
-      form.setValue("severity", undefined);
-      form.setValue("count", form.getValues("count") ?? 1);
+      setLogPest(true);
+      setSelectedPests([fromObservation.issueName]);
+      setPestCount(1);
     } else {
-      form.setValue("count", undefined);
-      form.setValue(
-        "severity",
+      setLogDisease(true);
+      setSelectedDiseases([fromObservation.issueName]);
+      setDiseaseSeverity(
         fromObservation.rating != null
           ? scoutRatingToDiseaseSeverity(fromObservation.rating)
-          : (form.getValues("severity") ?? 2),
-        { shouldValidate: true },
+          : 2,
       );
     }
-    if (nextKind === "pest" || nextKind === "disease") {
-      form.setValue("issue_name", fromObservation.issueName, { shouldValidate: false });
-      form.setValue("zone", preferredZoneForIssue(fromObservation.issueName), {
-        shouldValidate: true,
-      });
-      setShowPlantPicker(false);
-    }
+    form.setValue("zone", preferredZoneForIssue(fromObservation.issueName), {
+      shouldValidate: true,
+    });
+    setShowPlantPicker(false);
     form.setValue("notes", formatScoutHandoffNotes(fromObservation));
   }, [fromObservation, form]);
 
@@ -197,31 +330,15 @@ export function ReportInfestationForm({
         return;
       }
 
-      const zoneConfig = PLANT_ZONES[values.zone];
-      if (!issueAllowedInZone(values.issue_name, values.zone)) {
-        toast({
-          title: "Issue does not match that plant part",
-          description: `${values.issue_name} is not scored on ${zoneConfig.label}. Use the highlighted zone for this pest or disease.`,
-          tone: "error",
-        });
+      const validationError = validateMultiLog();
+      if (validationError) {
+        toast({ title: "Complete the plant report", description: validationError, tone: "error" });
         return;
       }
-      const isPest = values.kind === "pest";
-      const count = values.count ?? 0;
-      const diseaseSeverity = (values.severity ?? 2) as DiseaseSeverity;
-      const severityForDb = isPest ? pestCountToSeverity(count) : diseaseSeverity;
 
-      const problem = isPest
-        ? `Pest count: ${count} on ${zoneConfig.label.toLowerCase()}`
-        : `Disease severity ${diseaseSeverity}/3 (${DISEASE_SEVERITY_META[diseaseSeverity].label}) on ${zoneConfig.label.toLowerCase()}`;
-
-      const mainIssue = [
-        `Zone: ${zoneConfig.label}`,
-        `Kind: ${values.kind}`,
-        values.notes?.trim() ? `Notes: ${values.notes.trim()}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      const zoneConfig = PLANT_ZONES[values.zone];
+      const lines = buildReportLines();
+      const notesSuffix = values.notes?.trim() ? `Notes: ${values.notes.trim()}` : null;
 
       setSubmitting(true);
       try {
@@ -230,38 +347,68 @@ export function ReportInfestationForm({
           anchorFallback: gpsAnchorForFieldWork(resumeHotspot, scan.greenhouseId),
         });
         const coords =
-          fromObservation && scan.greenhouseId && scan.greenhouseName
+          mapCell && scan.greenhouseId && scan.greenhouseName
             ? resolveScoutCoords({
                 live,
                 greenhouseId: scan.greenhouseId,
                 greenhouseName: scan.greenhouseName,
-                column: fromObservation.column,
-                bay: fromObservation.bay,
+                column: mapCell.column,
+                bay: mapCell.bay,
               })
             : live;
         setGpsLabel(formatGps(coords));
 
-        if (!hasSupabaseEnv()) {
-          addDemoHotspot({
-            farmId: scan.farmId!,
-            farmName: scan.farmName ?? "Star",
-            greenhouseId: scan.greenhouseId,
-            greenhouseName: scan.greenhouseName ?? "—",
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            pest_type: values.issue_name,
-            problem,
-            main_issue: mainIssue,
-            severity: severityForDb,
-          });
+        const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+
+        if (file && !offline && hasSupabaseEnv()) {
+          try {
+            await uploadActivityEvidence(file);
+          } catch {
+            toast({
+              title: "Photo did not upload",
+              description: "Reports will still save without the photo.",
+              tone: "default",
+            });
+          }
+        } else if (file && offline) {
           toast({
-            title: isPest ? "Pest reported" : "Disease reported",
+            title: "Photo skipped while offline",
+            description: "Reports are queued. Retake the photo after you reconnect if needed.",
+            tone: "default",
+          });
+        }
+
+        let queuedAny = false;
+
+        if (!hasSupabaseEnv()) {
+          for (const line of lines) {
+            const detail = describeReportLine(line, zoneConfig.label);
+            const mainIssue = [
+              `Zone: ${zoneConfig.label}`,
+              `Kind: ${line.kind}`,
+              notesSuffix,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            addDemoHotspot({
+              farmId: scan.farmId!,
+              farmName: scan.farmName ?? "Star",
+              greenhouseId: scan.greenhouseId,
+              greenhouseName: scan.greenhouseName ?? "—",
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              pest_type: detail.pest_type,
+              problem: detail.problem,
+              main_issue: mainIssue,
+              severity: detail.severityForDb,
+            });
+          }
+          toast({
+            title: lines.length === 1 ? "Report saved" : `${lines.length} reports saved`,
             description: "Farm manager will see this to log a spray response.",
             tone: "success",
           });
-          form.reset({ issue_name: "", notes: "" });
-          setFile(null);
-          setShowPlantPicker(true);
+          resetAfterSuccess();
           onSuccess?.();
           return;
         }
@@ -272,74 +419,60 @@ export function ReportInfestationForm({
           return;
         }
 
-        const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+        for (const line of lines) {
+          const detail = describeReportLine(line, zoneConfig.label);
+          const mainIssue = [
+            `Zone: ${zoneConfig.label}`,
+            `Kind: ${line.kind}`,
+            notesSuffix,
+          ]
+            .filter(Boolean)
+            .join(" · ");
 
-        if (file && !offline) {
-          try {
-            await uploadActivityEvidence(file);
-          } catch {
-            toast({
-              title: "Photo did not upload",
-              description: "The pest report will still save without the photo.",
-              tone: "default",
-            });
-          }
-        } else if (file && offline) {
-          toast({
-            title: "Photo skipped while offline",
-            description: "The report is queued. Take the photo again after you reconnect if needed.",
-            tone: "default",
-          });
-        }
+          const payload = {
+            farm_id: scan.farmId!,
+            greenhouse_id: scan.greenhouseId,
+            reported_by: user.id,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            pest_type: detail.pest_type,
+            problem: detail.problem,
+            main_issue: mainIssue,
+            severity: detail.severityForDb,
+          };
 
-        const payload = {
-          farm_id: scan.farmId!,
-          greenhouse_id: scan.greenhouseId,
-          reported_by: user.id,
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          pest_type: values.issue_name,
-          problem,
-          main_issue: mainIssue,
-          severity: severityForDb,
-        };
-
-        const finishReport = (queued: boolean) => {
-          toast({
-            title: queued
-              ? "Report queued"
-              : isPest
-                ? "Pest reported"
-                : "Disease reported",
-            description: queued
-              ? "No signal — this report will upload when you reconnect."
-              : "Farm manager will see this to log a spray response.",
-            tone: queued ? "default" : "success",
-          });
-          form.reset({ issue_name: "", notes: "" });
-          setFile(null);
-          setShowPlantPicker(true);
-          onSuccess?.();
-        };
-
-        if (typeof navigator !== "undefined" && navigator.onLine === false) {
-          enqueueInfestation(payload);
-          finishReport(true);
-          return;
-        }
-
-        const { error } = await reportInfestation(payload);
-
-        if (error) {
-          if (isLikelyOfflineError(error)) {
+          if (offline) {
             enqueueInfestation(payload);
-            finishReport(true);
-            return;
+            queuedAny = true;
+            continue;
           }
-          throw error;
+
+          const { error } = await reportInfestation(payload);
+          if (error) {
+            if (isLikelyOfflineError(error)) {
+              enqueueInfestation(payload);
+              queuedAny = true;
+              continue;
+            }
+            throw error;
+          }
         }
 
-        finishReport(false);
+        toast({
+          title: queuedAny
+            ? lines.length === 1
+              ? "Report queued"
+              : `${lines.length} reports queued`
+            : lines.length === 1
+              ? "Report saved"
+              : `${lines.length} reports saved`,
+          description: queuedAny
+            ? "No signal — reports will upload when you reconnect."
+            : "Farm manager will see this to log a spray response.",
+          tone: queuedAny ? "default" : "success",
+        });
+        resetAfterSuccess();
+        onSuccess?.();
       } catch (e) {
         toast({
           title: "Could not save report",
@@ -357,7 +490,7 @@ export function ReportInfestationForm({
         description:
           typeof first === "string"
             ? first
-            : "Tap a plant zone, choose pest or disease, then fill details.",
+            : "Tap a plant zone, then log pest and/or disease.",
         tone: "error",
       });
     },
@@ -374,9 +507,10 @@ export function ReportInfestationForm({
               / <span className="font-semibold">{scan.greenhouseName}</span>
             </>
           ) : null}
-          {fromObservation ? (
+          {mapCell ? (
             <span className="mt-1 block text-xs text-muted-foreground">
-              After scouting Col {fromObservation.column} · Bay {fromObservation.bay}
+              {fromObservation ? "After scouting" : "Heat map spot"} · Col {mapCell.column} · Bay{" "}
+              {mapCell.bay}
             </span>
           ) : null}
         </p>
@@ -424,132 +558,171 @@ export function ReportInfestationForm({
           ) : null}
 
           <div className="space-y-2">
-            <span className="text-sm font-medium">2. Is this a pest or a disease?</span>
+            <span className="text-sm font-medium">2. Log pest and/or disease (tap both if needed)</span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 className={cn(
                   "rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
-                  kind === "pest"
+                  logPest
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-background hover:bg-muted",
                 )}
-                onClick={() => handleKindSelect("pest")}
+                onClick={() => toggleLogKind("pest")}
               >
                 Pest
                 <span className="mt-1 block text-xs font-normal opacity-80">
-                  Type + count
+                  Multi-select + count
                 </span>
               </button>
               <button
                 type="button"
                 className={cn(
                   "rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
-                  kind === "disease"
+                  logDisease
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-background hover:bg-muted",
                 )}
-                onClick={() => handleKindSelect("disease")}
+                onClick={() => toggleLogKind("disease")}
               >
                 Disease
                 <span className="mt-1 block text-xs font-normal opacity-80">
-                  Severity 1–3
+                  Multi-select + severity
                 </span>
               </button>
             </div>
-            {form.formState.errors.kind ? (
-              <p className="text-sm text-destructive">{form.formState.errors.kind.message}</p>
-            ) : null}
           </div>
 
-          {kind ? (
-            <>
-              <div className="space-y-1">
-                <span className="text-sm font-medium">
-                  3. {kind === "pest" ? "Pest type" : "Disease"} for this plant section
-                </span>
-                <p className="text-xs text-muted-foreground">
-                  Only issues for the {zone.label.toLowerCase()} are shown.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {options.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      className={cn(
-                        "rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
-                        issueName === name
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-background hover:bg-muted",
-                      )}
-                      onClick={() =>
-                        form.setValue("issue_name", name, { shouldValidate: true })
-                      }
-                    >
-                      {issueLabel(name)}
-                    </button>
-                  ))}
-                </div>
-                {form.formState.errors.issue_name ? (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.issue_name.message}
-                  </p>
-                ) : null}
+          {logPest ? (
+            <div className="space-y-1">
+              <span className="text-sm font-medium">3. Pests for this plant section</span>
+              <p className="text-xs text-muted-foreground">
+                Full VegPro pest list — tap all that apply (zone: {zone.label.toLowerCase()}).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-lg border px-2.5 py-1.5 text-sm font-semibold transition-colors",
+                    selectedPests.includes(NO_PEST)
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background hover:bg-muted",
+                  )}
+                  onClick={() => togglePestSelection(NO_PEST)}
+                >
+                  {NO_PEST}
+                </button>
+                {pestOptions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
+                      selectedPests.includes(name)
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background hover:bg-muted",
+                    )}
+                    onClick={() => togglePestSelection(name)}
+                  >
+                    {issueLabel(name)}
+                  </button>
+                ))}
               </div>
+            </div>
+          ) : null}
 
-              {kind === "pest" ? (
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium">4. Number counted</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={9999}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-3 text-base"
-                    placeholder="e.g. 12"
-                    {...form.register("count", { valueAsNumber: true })}
-                  />
-                  {form.formState.errors.count ? (
-                    <p className="text-sm text-destructive">
-                      {form.formState.errors.count.message}
-                    </p>
-                  ) : null}
-                </label>
-              ) : (
-                <div className="space-y-1">
-                  <span className="text-sm font-medium">4. Disease severity (1–3)</span>
-                  <div className="grid grid-cols-3 gap-2">
-                    {severityButtons.map((btn) => (
-                      <button
-                        key={btn.level}
-                        type="button"
-                        className={cn(
-                          "rounded-xl border px-2 py-3 text-center text-sm font-semibold transition-colors",
-                          btn.className,
-                          severity === btn.level && "ring-2 ring-offset-2 ring-primary",
-                        )}
-                        onClick={() =>
-                          form.setValue("severity", btn.level, { shouldValidate: true })
-                        }
-                      >
-                        <span className="block text-lg">{btn.level}</span>
-                        {btn.label}
-                      </button>
-                    ))}
-                  </div>
-                  {form.formState.errors.severity ? (
-                    <p className="text-sm text-destructive">
-                      {form.formState.errors.severity.message}
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </>
-          ) : (
+          {logDisease ? (
+            <div className="space-y-1">
+              <span className="text-sm font-medium">
+                {logPest ? "4. Diseases for this plant section" : "3. Diseases for this plant section"}
+              </span>
+              <p className="text-xs text-muted-foreground">
+                Full VegPro disease list — tap all that apply (zone: {zone.label.toLowerCase()}).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-lg border px-2.5 py-1.5 text-sm font-semibold transition-colors",
+                    selectedDiseases.includes(NO_DISEASE)
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background hover:bg-muted",
+                  )}
+                  onClick={() => toggleDiseaseSelection(NO_DISEASE)}
+                >
+                  {NO_DISEASE}
+                </button>
+                {diseaseOptions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
+                      selectedDiseases.includes(name)
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background hover:bg-muted",
+                    )}
+                    onClick={() => toggleDiseaseSelection(name)}
+                  >
+                    {issueLabel(name)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {hasCountablePests ? (
+            <label className="block space-y-1">
+              <span className="text-sm font-medium">
+                {logDisease ? "5. Number counted (pests)" : "4. Number counted (pests)"}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={9999}
+                value={pestCount}
+                onChange={(e) => setPestCount(Number(e.target.value))}
+                className="w-full rounded-xl border border-border bg-background px-3 py-3 text-base"
+                placeholder="e.g. 12"
+              />
+            </label>
+          ) : null}
+
+          {hasRatedDiseases ? (
+            <div className="space-y-1">
+              <span className="text-sm font-medium">
+                {hasCountablePests
+                  ? "6. Disease severity (1–3)"
+                  : logPest
+                    ? "5. Disease severity (1–3)"
+                    : "4. Disease severity (1–3)"}
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {severityButtons.map((btn) => (
+                  <button
+                    key={btn.level}
+                    type="button"
+                    className={cn(
+                      "rounded-xl border px-2 py-3 text-center text-sm font-semibold transition-colors",
+                      btn.className,
+                      diseaseSeverity === btn.level && "ring-2 ring-offset-2 ring-primary",
+                    )}
+                    onClick={() => setDiseaseSeverity(btn.level)}
+                  >
+                    <span className="block text-lg">{btn.level}</span>
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {!logPest && !logDisease ? (
             <p className="text-sm text-muted-foreground">
-              Choose <Badge variant="outline">Pest</Badge> or{" "}
-              <Badge variant="outline">Disease</Badge> to continue.
+              Turn on <Badge variant="outline">Pest</Badge>,{" "}
+              <Badge variant="outline">Disease</Badge>, or both to continue.
             </p>
-          )}
+          ) : null}
         </div>
       ) : (
         <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
@@ -583,10 +756,29 @@ export function ReportInfestationForm({
         type="submit"
         size="lg"
         className="w-full"
-        disabled={submitting || !zone || !kind}
+        disabled={submitting || !readyToSubmit}
       >
         {submitting ? "Saving…" : "Submit report"}
       </Button>
+
+      {canFinishWalk ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="lg"
+          className="w-full"
+          disabled={submitting}
+          onClick={() => document.getElementById("worker-finish-walking")?.click()}
+        >
+          <Square className="mr-2 size-4" />
+          Finish Walk
+          {session?.greenhouseName ? (
+            <span className="ml-1 text-xs font-normal opacity-80">
+              ({session.greenhouseName})
+            </span>
+          ) : null}
+        </Button>
+      ) : null}
     </form>
   );
 }

@@ -1,60 +1,34 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { LoginShell } from "@/features/auth/login-shell";
-import { RoleSelect, type LoginPortal } from "@/features/auth/role-select";
 import { ROLE_ROUTES } from "@/lib/constants";
+import {
+  demoLoginRoleFromRole,
+  roleFromLoginEmail,
+} from "@/lib/login-email-role";
 import {
   loadLoginPrefs,
   saveLoginPrefs,
-  type DemoLoginRole,
 } from "@/lib/login-remember";
 import {
   getSessionAction,
   signInWithPasswordAction,
 } from "@/features/auth/sign-in-action";
-import { hasConfiguredBackend, hasMssqlEnv, hasSupabaseEnv } from "@/lib/data-backend";
-import { createClient } from "@/lib/supabase/client";
+import { hasConfiguredBackend } from "@/lib/data-backend";
 import type { Role } from "@/types/db";
 
 const REMEMBER_MAX_AGE = 60 * 60 * 24 * 30;
 
-export type { LoginPortal };
-
-const PORTAL_CONFIG = {
-  worker: {
-    demoRole: "worker" as const,
-    allowedRoles: ["worker"] as Role[],
-    continueLabel: "Field worker",
-  },
-  manager: {
-    demoRole: "supervisor" as const,
-    allowedRoles: ["supervisor"] as Role[],
-    continueLabel: "Farm manager",
-  },
-  admin: {
-    demoRole: "admin" as const,
-    allowedRoles: ["admin"] as Role[],
-    continueLabel: "Admin",
-  },
-} as const;
-
-function demoRoleToPortal(demoRole: DemoLoginRole): LoginPortal {
-  if (demoRole === "supervisor") return "manager";
-  if (demoRole === "admin") return "admin";
-  return "worker";
-}
-
-export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
+export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const passwordAuth = hasConfiguredBackend();
-  const supabaseConfigured = hasSupabaseEnv();
 
-  const [portal, setPortal] = useState<LoginPortal>(initialPortal ?? "worker");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -64,45 +38,25 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
   const [mounted, setMounted] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
-  const config = PORTAL_CONFIG[portal];
-
   useEffect(() => {
     setMounted(true);
     const prefs = loadLoginPrefs();
     setEmail(prefs.email);
     setRememberMe(prefs.rememberMe);
-    setPortal(initialPortal ?? demoRoleToPortal(prefs.demoRole));
     setPrefsLoaded(true);
-  }, [initialPortal]);
+    if (searchParams.get("inactive") === "1") {
+      setMessage(
+        "This account is inactive. Contact an administrator to restore access.",
+      );
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!passwordAuth || !prefsLoaded) return;
 
-    if (hasMssqlEnv()) {
-      void getSessionAction().then((session) => {
-        if (session) router.replace(ROLE_ROUTES[session.role]);
-      });
-      return;
-    }
-
-    const supabase = createClient();
-    void supabase.auth
-      .getUser()
-      .then(async ({ data: { user } }) => {
-        if (!user) return;
-
-        const { data: profile } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-
-        const role = (profile?.role ?? "worker") as Role;
-        router.replace(ROLE_ROUTES[role]);
-      })
-      .catch(() => {
-        /* Browser may be blocked from calling Auth; password submit uses the server. */
-      });
+    void getSessionAction().then((session) => {
+      if (session) router.replace(ROLE_ROUTES[session.role]);
+    });
   }, [passwordAuth, prefsLoaded, router]);
 
   const goToDashboard = (role: Role) => {
@@ -110,9 +64,9 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
     router.refresh();
   };
 
-  const setDemoCookies = () => {
+  const setDemoCookies = (role: Role) => {
     const maxAge = rememberMe ? REMEMBER_MAX_AGE : 0;
-    document.cookie = `demo_role=${config.demoRole}; path=/; max-age=${maxAge}`;
+    document.cookie = `demo_role=${role}; path=/; max-age=${maxAge}`;
     document.cookie = `demo_auth=1; path=/; max-age=${maxAge}`;
   };
 
@@ -121,9 +75,16 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
     setMessage("");
 
     if (!passwordAuth) {
-      if (rememberMe) saveLoginPrefs(email, true, config.demoRole);
-      setDemoCookies();
-      goToDashboard(config.demoRole);
+      const role = roleFromLoginEmail(email);
+      if (!role) {
+        setMessage(
+          "Use a role email such as admin@vegpro.com, manager@vegpro.com, or worker@vegpro.com.",
+        );
+        return;
+      }
+      if (rememberMe) saveLoginPrefs(email, true, demoLoginRoleFromRole(role));
+      setDemoCookies(role);
+      goToDashboard(role);
       return;
     }
 
@@ -135,12 +96,7 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
       return;
     }
 
-    saveLoginPrefs(
-      email,
-      rememberMe,
-      result.role === "supervisor" ? "supervisor" : result.role === "admin" ? "admin" : "worker",
-    );
-
+    saveLoginPrefs(email, rememberMe, demoLoginRoleFromRole(result.role));
     goToDashboard(result.role);
     setBusy(false);
   };
@@ -163,27 +119,18 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
         </div>
 
         <div className="space-y-3">
-          <div className="block space-y-1.5">
-            <span className="text-sm font-medium">Role</span>
-            <RoleSelect
-              value={portal}
-              onChange={setPortal}
-              disabled={!prefsLoaded || busy}
-            />
-          </div>
-
           <label className="block space-y-1.5">
             <span className="text-sm font-medium">Email</span>
             <input
               className="w-full rounded-lg border border-border bg-background p-3 text-base"
-              placeholder="you@farm.com"
+              placeholder="admin@vegpro.com"
               type="email"
               name="email"
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={!prefsLoaded || busy}
-              required={passwordAuth}
+              required
             />
           </label>
 
@@ -244,7 +191,7 @@ export function LoginForm({ initialPortal }: { initialPortal?: LoginPortal }) {
 
         {!passwordAuth ? (
           <p className="text-center text-xs text-muted-foreground">
-            Demo mode — no password required
+            Demo mode — try admin@vegpro.com, manager@vegpro.com, or worker@vegpro.com
           </p>
         ) : null}
 

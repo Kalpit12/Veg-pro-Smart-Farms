@@ -1,10 +1,11 @@
 "use client";
 
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ClipboardCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { LivePulseDot } from "@/components/ui/live-pulse-dot";
 import { PhotoEvidenceLink } from "@/features/evidence/photo-evidence-link";
 import { useScoutingRounds } from "@/hooks/use-scouting-data";
 import { samplingTargetForGreenhouse } from "@/lib/scout-sampling";
@@ -15,11 +16,15 @@ import { useScoutingStore } from "@/store/scouting-store";
 
 type RoundPhoto = { id: string; imageUrl: string; columnNo: number; bayNo: number };
 
-function useRoundPhotos(roundId: string, status: string) {
+const LIVE_PHOTO_POLL_MS = 12_000;
+const LIVE_CLOCK_TICK_MS = 30_000;
+const LIVE_ROUND_POLL_MS = 15_000;
+
+function useRoundPhotos(roundId: string, status: string, refreshKey: number) {
   const [photos, setPhotos] = useState<RoundPhoto[]>([]);
   const demoRecords = useScoutingStore((s) => s.demoRecords);
 
-  useEffect(() => {
+  const loadPhotos = useCallback(() => {
     if (status !== "active") {
       setPhotos([]);
       return;
@@ -38,9 +43,7 @@ function useRoundPhotos(roundId: string, status: string) {
       );
       return;
     }
-    let cancelled = false;
     void listRecordsForRound(roundId).then(({ data }) => {
-      if (cancelled) return;
       const withPhoto = (data ?? [])
         .filter((r) => r.image_url)
         .slice(0, 5)
@@ -52,17 +55,25 @@ function useRoundPhotos(roundId: string, status: string) {
         }));
       setPhotos(withPhoto);
     });
-    return () => {
-      cancelled = true;
-    };
   }, [roundId, status, demoRecords]);
+
+  useEffect(() => {
+    loadPhotos();
+    if (status !== "active") return;
+    const id = window.setInterval(loadPhotos, LIVE_PHOTO_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [loadPhotos, status, refreshKey]);
 
   return photos;
 }
 
 function ActiveRoundAuditRow({
   round,
+  now,
+  refreshKey,
 }: {
+  now: Date;
+  refreshKey: number;
   round: {
     id: string;
     status: string;
@@ -76,13 +87,14 @@ function ActiveRoundAuditRow({
   };
 }) {
   const sample = samplingTargetForGreenhouse(round.greenhouseName);
-  const elapsed = round.durationS ?? durationSeconds(round.startedAt);
+  const elapsed =
+    round.durationS ?? durationSeconds(round.startedAt, now.toISOString());
   const progress = Math.min(
     100,
     Math.round((round.stopCount / Math.max(1, sample.targetStops)) * 100),
   );
   const underSampled = round.stopCount < sample.targetStops;
-  const photos = useRoundPhotos(round.id, round.status);
+  const photos = useRoundPhotos(round.id, round.status, refreshKey);
 
   return (
     <li className="space-y-2 px-3 py-3 text-sm">
@@ -95,7 +107,9 @@ function ActiveRoundAuditRow({
             Started{" "}
             {formatDistanceToNow(new Date(round.startedAt), {
               addSuffix: true,
-            })}
+              now,
+            })}{" "}
+            · {format(new Date(round.startedAt), "MMM d, HH:mm")}
           </p>
         </div>
         <div className="text-right text-xs text-muted-foreground">
@@ -140,24 +154,68 @@ function ActiveRoundAuditRow({
 }
 
 export function ScoutingLiveAuditPanel() {
-  const { rounds } = useScoutingRounds(40);
+  const { rounds, refresh } = useScoutingRounds(40);
   const active = rounds.filter((r) => r.status === "active");
+  const [now, setNow] = useState(() => new Date());
+  const [lastUpdated, setLastUpdated] = useState(() => new Date());
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const pullLive = useCallback(async () => {
+    await refresh();
+    setLastUpdated(new Date());
+    setRefreshKey((k) => k + 1);
+  }, [refresh]);
+
+  useEffect(() => {
+    setLastUpdated(new Date());
+  }, [rounds]);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(new Date()), LIVE_CLOCK_TICK_MS);
+    return () => window.clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    if (!active.length) return;
+    const poll = window.setInterval(() => {
+      void pullLive();
+    }, LIVE_ROUND_POLL_MS);
+    return () => window.clearInterval(poll);
+  }, [active.length, pullLive]);
 
   return (
     <section className="glass-card space-y-3 rounded-2xl p-4" data-testid="live-scout-audit">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <ClipboardCheck className="size-4 text-primary" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <ClipboardCheck className="mt-0.5 size-4 text-primary" />
           <div>
-            <h2 className="text-lg font-semibold">Live scout audit</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold">Live scout audit</h2>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                <LivePulseDot />
+                Live
+              </span>
+            </div>
             <p className="text-sm text-muted-foreground">
               Who is in a house now — stops, sample progress, and photo evidence.
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {format(now, "EEEE, MMM d, yyyy")}
+              </span>
+              {" · "}
+              Data refreshed {format(lastUpdated, "HH:mm:ss")}
+            </p>
           </div>
         </div>
-        <Badge variant={active.length ? "warning" : "outline"}>
-          {active.length} active
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="success" className="tabular-nums">
+            {format(now, "HH:mm")}
+          </Badge>
+          <Badge variant={active.length ? "warning" : "outline"}>
+            {active.length} active
+          </Badge>
+        </div>
       </div>
 
       {!active.length ? (
@@ -168,7 +226,12 @@ export function ScoutingLiveAuditPanel() {
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border">
           {active.map((round) => (
-            <ActiveRoundAuditRow key={round.id} round={round} />
+            <ActiveRoundAuditRow
+              key={round.id}
+              round={round}
+              now={now}
+              refreshKey={refreshKey}
+            />
           ))}
         </ul>
       )}

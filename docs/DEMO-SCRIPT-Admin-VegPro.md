@@ -120,7 +120,7 @@ Point to the blue **“Demo: scout data → GPS → dashboards”** panel.
 
 ### 2d. Scout route map (1.5 min)
 
-> “The **Scout route map** is the GPS story for managers. Each saved stop is a map point with greenhouse, column, bay, issue, and time. Select a **scouting round** from the dropdown to see the path the scout walked — Scarab-style session timing and multi-stop routes. Seed data includes a demo round across **BEGH 01** and **BEGH 05**.”
+> “The **Scout route map** is the GPS story for managers. Each saved stop is a map point with greenhouse, column, bay, issue, and time. Select a **scouting round** from the dropdown to see the path the scout walked — session timing and multi-stop routes. Seed data includes a demo round across **BEGH 01** and **BEGH 05**.”
 
 **Action:** Select the demo round; zoom and pan the map. Point out stop markers and route line.
 
@@ -293,8 +293,8 @@ A: Yes — select a pin and **Mark sprayed** or **Mark resolved**. Status syncs 
 **Q: How far back does History go?**  
 A: Three months by default, filterable by greenhouse and activity type (reports vs sprays).
 
-**Q: Does this replace Scarab?**  
-A: Manager scouting mirrors Scarab-style **rounds, routes, and stop timing** while integrating infestation, spray, dashboards, and auto spray program in one VegPro platform.
+**Q: How does this compare to legacy scouting tools?**  
+A: Manager scouting supports **rounds, routes, and stop timing** while integrating infestation, spray, dashboards, and auto spray program in one VegPro platform.
 
 **Q: What about farms beyond Bemack?**  
 A: The data model is multi-farm; this demo is seeded for Bemack per your spreadsheet. Farm filter on the map supports additional sites as you onboard them.

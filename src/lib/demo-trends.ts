@@ -35,7 +35,7 @@ const DEMO_ISSUES = [
 const DEMO_VARIETIES = [...BEMACK_VARIETIES["Cut Rose"].slice(0, 7)];
 
 /**
- * Scarab-like demo matrix: every Star greenhouse × lookback days with
+ * Demo trends matrix: every Star greenhouse × lookback days with
  * issue/variety metadata so filters work offline.
  */
 export function buildDemoTrendsRows(days: number): TrendsScoutingRow[] {

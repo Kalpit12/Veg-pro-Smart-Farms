@@ -104,7 +104,7 @@ function nearestTrackByTime(
   return best;
 }
 
-/** Light smoothing for display (Scarab-style clean path, not raw jitter). */
+/** Light smoothing for display (clean path, not raw jitter). */
 export function smoothTrackForDisplay(
   track: TrackPointLike[],
   window = 3,

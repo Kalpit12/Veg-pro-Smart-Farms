@@ -18,6 +18,7 @@ import {
 } from "@/lib/scouting-yesterday";
 import { formatDistance, formatDuration } from "@/lib/route-metrics";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
 import {
   listScoutingRounds,
   listScoutingRoundsBetween,
@@ -25,16 +26,51 @@ import {
 import { useScoutingStore } from "@/store/scouting-store";
 import { cn } from "@/lib/utils";
 
-export function YesterdayScoutedGreenhouses() {
+type Props = {
+  scope?: "all" | "assigned";
+  scoutingBasePath?: string;
+};
+
+export function YesterdayScoutedGreenhouses({
+  scope = "all",
+  scoutingBasePath = "/admin/scouting",
+}: Props) {
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const [loading, setLoading] = useState(true);
   const [rounds, setRounds] = useState<YesterdayScoutRound[]>([]);
   const [selected, setSelected] = useState<YesterdayScoutRound | null>(null);
+  const [assignedGreenhouseIds, setAssignedGreenhouseIds] = useState<
+    Set<string> | null
+  >(scope === "assigned" ? null : new Set());
+
+  useEffect(() => {
+    if (scope !== "assigned") return;
+    void getMyAssignedSitesAction().then((result) => {
+      const ids = new Set<string>();
+      for (const farm of result.data ?? []) {
+        for (const gh of farm.greenhouses) {
+          ids.add(gh.id);
+        }
+      }
+      setAssignedGreenhouseIds(ids);
+    });
+  }, [scope]);
+
+  const filterByScope = useCallback(
+    (list: YesterdayScoutRound[]) => {
+      if (scope !== "assigned" || !assignedGreenhouseIds) return list;
+      return list.filter((r) => assignedGreenhouseIds.has(r.greenhouseId));
+    },
+    [scope, assignedGreenhouseIds],
+  );
 
   const load = useCallback(async () => {
+    if (scope === "assigned" && assignedGreenhouseIds === null) return;
     setLoading(true);
     if (!hasSupabaseEnv()) {
-      const list = dedupeByGreenhouse(filterRoundsStartedYesterday(demoRounds));
+      const list = filterByScope(
+        dedupeByGreenhouse(filterRoundsStartedYesterday(demoRounds)),
+      );
       setRounds(list);
       setLoading(false);
       return;
@@ -43,15 +79,17 @@ export function YesterdayScoutedGreenhouses() {
     const { data, error } = await listScoutingRoundsBetween(from, to);
     if (error || !data?.length) {
       const fallback = await listScoutingRounds(100);
-      const list = dedupeByGreenhouse(
-        filterRoundsStartedYesterday(fallback.data ?? []),
+      const list = filterByScope(
+        dedupeByGreenhouse(filterRoundsStartedYesterday(fallback.data ?? [])),
       );
       setRounds(list);
     } else {
-      setRounds(dedupeByGreenhouse(filterRoundsStartedYesterday(data)));
+      setRounds(
+        filterByScope(dedupeByGreenhouse(filterRoundsStartedYesterday(data))),
+      );
     }
     setLoading(false);
-  }, [demoRounds]);
+  }, [demoRounds, scope, assignedGreenhouseIds, filterByScope]);
 
   useEffect(() => {
     void load();
@@ -63,9 +101,15 @@ export function YesterdayScoutedGreenhouses() {
 
   if (selected) {
     return (
-      <ScoutingRoundReportDetail round={selected} onBack={() => setSelected(null)} />
+      <ScoutingRoundReportDetail
+        round={selected}
+        onBack={() => setSelected(null)}
+        scoutingBasePath={scoutingBasePath}
+      />
     );
   }
+
+  const waitingAssignments = scope === "assigned" && assignedGreenhouseIds === null;
 
   return (
     <section className="glass-card space-y-4 rounded-2xl p-4 sm:p-5">
@@ -74,6 +118,7 @@ export function YesterdayScoutedGreenhouses() {
           <h2 className="text-lg font-semibold">Scouted yesterday</h2>
           <p className="text-sm text-muted-foreground">
             {yesterdayLabel()} — tap a greenhouse for the full scouting report.
+            {scope === "assigned" ? " Only your assigned sites are shown." : null}
           </p>
         </div>
         {!loading && rounds.length > 0 ? (
@@ -81,7 +126,7 @@ export function YesterdayScoutedGreenhouses() {
         ) : null}
       </header>
 
-      {loading ? (
+      {waitingAssignments || loading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
@@ -89,8 +134,9 @@ export function YesterdayScoutedGreenhouses() {
         </div>
       ) : rounds.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          No scouting rounds started yesterday. Completed walks will appear here for managers
-          each morning.
+          {scope === "assigned" && assignedGreenhouseIds?.size === 0
+            ? "No greenhouses are assigned to your account yet."
+            : "No scouting rounds started yesterday for your sites. Completed walks will appear here each morning."}
         </p>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

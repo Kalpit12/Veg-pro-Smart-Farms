@@ -1,4 +1,7 @@
+export type MssqlAuth = "sql" | "windows";
+
 export type MssqlConfig = {
+  auth: MssqlAuth;
   server: string;
   database: string;
   user: string;
@@ -9,13 +12,18 @@ export type MssqlConfig = {
 };
 
 export function getMssqlConfig(): MssqlConfig | null {
-  const server = process.env.MSSQL_SERVER;
-  const user = process.env.MSSQL_USER;
-  const password = process.env.MSSQL_PASSWORD;
-  if (!server || !user || !password) return null;
+  const server = process.env.MSSQL_SERVER?.trim();
+  if (!server) return null;
+
+  const auth: MssqlAuth = process.env.MSSQL_AUTH === "windows" ? "windows" : "sql";
+  const user = process.env.MSSQL_USER?.trim() ?? "";
+  const password = process.env.MSSQL_PASSWORD ?? "";
+  if (auth === "sql" && (!user || !password)) return null;
+
   return {
+    auth,
     server,
-    database: process.env.MSSQL_DATABASE ?? "Scouting",
+    database: process.env.MSSQL_DATABASE?.trim() || "Scouting",
     user,
     password,
     port: process.env.MSSQL_PORT ? Number(process.env.MSSQL_PORT) : 1433,

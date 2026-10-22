@@ -18,13 +18,14 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; line-heigh
 h1 { color: #166534; font-size: 20pt; border-bottom: 2px solid #166534; padding-bottom: 8px; page-break-after: avoid; }
 h2 { color: #14532d; font-size: 13pt; margin-top: 22px; page-break-after: avoid; }
 h3 { color: #15803d; font-size: 11pt; margin-top: 16px; page-break-after: avoid; }
-table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 9pt; page-break-inside: avoid; }
-th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 9pt; page-break-inside: avoid; table-layout: fixed; }
+th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-wrap: break-word; }
 th { background: #f0fdf4; }
 hr { border: none; border-top: 1px solid #ddd; margin: 18px 0; }
 ul, ol { margin: 6px 0; padding-left: 22px; }
 li { margin: 3px 0; }
-pre { background: #f4f4f5; border: 1px solid #ddd; padding: 10px 12px; font-size: 8.5pt; line-height: 1.35; overflow-x: auto; page-break-inside: avoid; }
+pre { background: #f4f4f5; border: 1px solid #ddd; padding: 10px 12px; font-size: 8.5pt; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; word-wrap: break-word; overflow-x: visible; max-width: 100%; page-break-inside: avoid; }
+pre code { white-space: pre-wrap; overflow-wrap: anywhere; word-wrap: break-word; }
 code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; }
 p code { background: #f4f4f5; padding: 1px 4px; }
 blockquote { margin: 10px 0; padding: 10px 14px; border-left: 4px solid #166534; background: #f0fdf4; font-style: italic; }
@@ -169,6 +170,7 @@ def main() -> None:
             browser,
             "--headless=new",
             "--disable-gpu",
+            "--no-pdf-header-footer",
             f"--print-to-pdf={pdf_path}",
             html_path.as_uri(),
         ],

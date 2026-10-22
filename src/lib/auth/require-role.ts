@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ROLE_ROUTES } from "@/lib/constants";
 import type { Role } from "@/types/db";
 import { getServerDataBackend } from "@/lib/data-backend";
+import { resolveUserRole } from "@/lib/auth/resolve-user-role";
 import { getSessionFromCookies } from "@/lib/auth/session";
 
 export async function requireRole(allowed: Role[]) {
@@ -37,13 +38,7 @@ export async function requireRole(allowed: Role[]) {
     redirect("/auth/login");
   }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  const role = (profile?.role ?? "worker") as Role;
+  const { role } = await resolveUserRole(supabase, user.id, user);
   if (!allowed.includes(role)) {
     redirect(ROLE_ROUTES[role]);
   }
