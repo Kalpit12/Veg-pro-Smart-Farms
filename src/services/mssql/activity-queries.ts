@@ -88,7 +88,7 @@ export async function mssqlListUnifiedActivityLogs(params: {
     const limit = params.limit ?? 100;
     const pool = await getMssqlPool();
 
-    const [activities, hotspots, sprays, scouting] = await Promise.all([
+    const [activitiesRes, hotspotsRes, spraysRes, scoutingRes] = await Promise.all([
       pool.request().query(`
         SELECT TOP (200) a.id, a.activity_type, a.status, a.created_at, a.notes, a.image_url,
                u.full_name AS worker_name, f.name AS farm_name, g.name AS greenhouse_name, g.crop_type AS variety_name
@@ -129,7 +129,7 @@ export async function mssqlListUnifiedActivityLogs(params: {
       `),
     ]);
 
-    const hotspots: HotspotRow[] = hotspots.recordset.map((h) => ({
+    const hotspotRows: HotspotRow[] = hotspotsRes.recordset.map((h) => ({
       id: String(h.id),
       pest_type: h.pest_type as string,
       problem: h.problem as string,
@@ -146,11 +146,11 @@ export async function mssqlListUnifiedActivityLogs(params: {
       farms: h.farm_name ? { name: h.farm_name as string } : null,
       greenhouses: h.greenhouse_name ? { name: h.greenhouse_name as string } : null,
     }));
-    const hotspotsById = new Map(hotspots.map((h) => [h.id, h]));
+    const hotspotsById = new Map(hotspotRows.map((h) => [h.id, h]));
 
     const rows: ActivityLogRow[] = [];
 
-    for (const a of activities.recordset) {
+    for (const a of activitiesRes.recordset) {
       rows.push({
         id: `activity-${a.id}`,
         activity_type: a.activity_type as string,
@@ -165,7 +165,7 @@ export async function mssqlListUnifiedActivityLogs(params: {
       });
     }
 
-    for (const h of hotspots.recordset) {
+    for (const h of hotspotsRes.recordset) {
       rows.push({
         id: `hotspot-${h.id}`,
         activity_type: "Infestation report",
@@ -180,7 +180,7 @@ export async function mssqlListUnifiedActivityLogs(params: {
       });
     }
 
-    for (const s of sprays.recordset) {
+    for (const s of spraysRes.recordset) {
       const spray = {
         product_name: s.product_name as string,
         notes: s.notes as string | null,
@@ -201,7 +201,7 @@ export async function mssqlListUnifiedActivityLogs(params: {
       });
     }
 
-    for (const r of scouting.recordset) {
+    for (const r of scoutingRes.recordset) {
       rows.push({
         id: `scout-${r.id}`,
         activity_type: "Scouting stop",
