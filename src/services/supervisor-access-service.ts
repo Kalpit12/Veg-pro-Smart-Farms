@@ -6,6 +6,7 @@ import { resolveUserRole } from "@/lib/auth/resolve-user-role";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import { isMssqlMissingObjectError } from "@/lib/mssql/sql-errors";
+import { demoManagerAssignedSites } from "@/lib/demo-manager-sites";
 import { isSqlGuid } from "@/lib/uuid";
 
 export type FarmGreenhouseCatalogItem = {
@@ -282,7 +283,7 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
   try {
     const backend = getServerDataBackend();
     if (backend === "demo") {
-      return { data: [], error: null };
+      return { data: demoManagerAssignedSites(), error: null };
     }
 
     if (backend === "mssql") {
@@ -297,10 +298,14 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
         .query(`
           SELECT f.id AS farm_id, f.name AS farm_name, g.id AS greenhouse_id, g.name AS greenhouse_name,
                  g.crop_type AS greenhouse_crop_type
-          FROM dbo.supervisor_greenhouse_access a
-          INNER JOIN dbo.greenhouses g ON g.id = a.greenhouse_id
+          FROM dbo.greenhouses g
           INNER JOIN dbo.farms f ON f.id = g.farm_id
-          WHERE a.user_id = @user_id
+          WHERE g.farm_id IN (
+            SELECT DISTINCT g2.farm_id
+            FROM dbo.supervisor_greenhouse_access a
+            INNER JOIN dbo.greenhouses g2 ON g2.id = a.greenhouse_id
+            WHERE a.user_id = @user_id
+          )
           ORDER BY f.name, g.name
         `);
       const rows = result.recordset.map((r) => ({

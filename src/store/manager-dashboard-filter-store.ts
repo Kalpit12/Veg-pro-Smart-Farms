@@ -17,6 +17,7 @@ type State = {
   variety: string;
   dateYmd: string;
   setSites: (sites: FarmGreenhouseCatalogItem[]) => void;
+  resetSitesLoad: () => void;
   setFarmId: (farmId: string) => void;
   setGreenhouseId: (greenhouseId: string) => void;
   setVariety: (variety: string) => void;
@@ -78,6 +79,8 @@ export const useManagerDashboardFilterStore = create<State>((set, get) => ({
   },
 
   setDateYmd: (dateYmd) => set({ dateYmd }),
+
+  resetSitesLoad: () => set({ sites: [], sitesLoaded: false }),
 }));
 
 export function useManagerFilterSelection() {

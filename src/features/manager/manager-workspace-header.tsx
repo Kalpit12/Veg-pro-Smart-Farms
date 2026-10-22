@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { formatHeaderDate } from "@/lib/manager-dashboard-filters";
 import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
 import { ManagerDashboardFiltersBar } from "@/features/manager/manager-dashboard-filters-bar";
-import {
-  useManagerDashboardFilterStore,
-} from "@/store/manager-dashboard-filter-store";
+import { useManagerDashboardFilterStore } from "@/store/manager-dashboard-filter-store";
 
 function farmTitleLabel(sites: { farmId: string; farmName: string }[], farmId: string) {
   if (farmId !== "all") {
@@ -28,14 +27,36 @@ export function ManagerWorkspaceHeader() {
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
   const dateYmd = useManagerDashboardFilterStore((s) => s.dateYmd);
   const setSites = useManagerDashboardFilterStore((s) => s.setSites);
+  const resetSitesLoad = useManagerDashboardFilterStore((s) => s.resetSitesLoad);
   const setDateYmd = useManagerDashboardFilterStore((s) => s.setDateYmd);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingSites, setLoadingSites] = useState(!sitesLoaded);
+
+  const loadSites = useCallback(async () => {
+    resetSitesLoad();
+    setLoadingSites(true);
+    setLoadError(null);
+    try {
+      const result = await getMyAssignedSitesAction();
+      if (result.error) {
+        setLoadError(result.error.message);
+        return;
+      }
+      setSites(result.data ?? []);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Could not load farms.");
+    } finally {
+      setLoadingSites(false);
+    }
+  }, [setSites, resetSitesLoad]);
 
   useEffect(() => {
-    if (sitesLoaded) return;
-    void getMyAssignedSitesAction().then((result) => {
-      setSites(result.data ?? []);
-    });
-  }, [sitesLoaded, setSites]);
+    if (sitesLoaded) {
+      setLoadingSites(false);
+      return;
+    }
+    void loadSites();
+  }, [sitesLoaded, loadSites]);
 
   const farmLabel = farmTitleLabel(sites, farmId);
 
@@ -47,10 +68,18 @@ export function ManagerWorkspaceHeader() {
             Farm manager
             {farmLabel ? (
               <span className="text-muted-foreground"> · {farmLabel}</span>
-            ) : sitesLoaded ? null : (
+            ) : loadingSites ? (
               <span className="text-muted-foreground"> · …</span>
-            )}
+            ) : null}
           </p>
+          {loadError ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="text-xs text-destructive">{loadError}</p>
+              <Button type="button" size="sm" variant="outline" onClick={() => void loadSites()}>
+                Retry
+              </Button>
+            </div>
+          ) : null}
         </div>
         <div className="shrink-0 sm:min-w-[11rem]">
           <label className="mb-1 block text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
@@ -68,7 +97,9 @@ export function ManagerWorkspaceHeader() {
           </p>
         </div>
       </div>
-      {onDashboard ? <ManagerDashboardFiltersBar /> : null}
+      {onDashboard ? (
+        <ManagerDashboardFiltersBar loading={loadingSites} loadError={loadError} onRetry={loadSites} />
+      ) : null}
     </div>
   );
 }

@@ -87,6 +87,7 @@ function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
             onClick={onNavigate}
             className={cn(
               "flex min-h-11 items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-muted-foreground transition hover:bg-primary/10 hover:text-foreground",
@@ -276,6 +277,7 @@ export function AppShell({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={cn(
                 "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[0.68rem] leading-none text-muted-foreground sm:text-xs",
                 active && "bg-primary/15 text-foreground",
