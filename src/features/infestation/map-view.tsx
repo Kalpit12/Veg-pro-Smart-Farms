@@ -8,7 +8,7 @@ import "leaflet/dist/leaflet.css";
 
 import { hotspotIcon, sprayIcon, workerIcon } from "@/features/infestation/farm-map-markers";
 import { MapViewControls } from "@/features/infestation/map-view-controls";
-import { getRasterBasemapTileUrl, MAP_BASEMAP_ATTRIBUTION } from "@/lib/map-basemap";
+import { useMapBasemap } from "@/hooks/use-map-basemap";
 import { trailStopMarkers, type TrailPoint } from "@/lib/hotspot-trail";
 import type { HotspotRow } from "@/services/supabase/infestation-service";
 
@@ -268,12 +268,13 @@ export function MapView({
   className = "farm-map-view",
 }: MapViewProps) {
   const [mounted, setMounted] = useState(false);
+  const basemap = useMapBasemap();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
+  if (!mounted || !basemap) {
     return <div className={className} aria-hidden />;
   }
 
@@ -290,8 +291,8 @@ export function MapView({
       scrollWheelZoom
     >
       <TileLayer
-        attribution={MAP_BASEMAP_ATTRIBUTION}
-        url={getRasterBasemapTileUrl()}
+        attribution={basemap.attribution}
+        url={basemap.url}
         maxNativeZoom={19}
         maxZoom={19}
       />
