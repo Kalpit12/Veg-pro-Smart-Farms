@@ -288,7 +288,12 @@ export function MapView({
       className={className}
       scrollWheelZoom
     >
-      <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        maxNativeZoom={19}
+        maxZoom={19}
+      />
       <MapLayers
         focus={focus}
         trail={trail}
