@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardList, Droplets, MapPin } from "lucide-react";
+import { CheckSquare, ClipboardList, Droplets, MapPin } from "lucide-react";
 
 const actions = [
   {
@@ -17,6 +17,12 @@ const actions = [
     icon: ClipboardList,
   },
   {
+    href: "/manager/approvals",
+    label: "Approvals",
+    description: "Pending worker submissions",
+    icon: CheckSquare,
+  },
+  {
     href: "/manager/spray",
     label: "Log spray",
     description: "Record a spray in the field",
@@ -26,7 +32,7 @@ const actions = [
 
 export function ManagerQuickActions() {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {actions.map(({ href, label, description, icon: Icon }) => (
         <Link
           key={href}
