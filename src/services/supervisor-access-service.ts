@@ -6,6 +6,7 @@ import { resolveUserRole } from "@/lib/auth/resolve-user-role";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import { isMssqlMissingObjectError } from "@/lib/mssql/sql-errors";
+import { isSqlGuid } from "@/lib/uuid";
 
 export type FarmGreenhouseCatalogItem = {
   farmId: string;
@@ -20,7 +21,7 @@ export function normalizeGreenhouseIds(ids: string[]): string[] {
   const seen = new Set<string>();
   for (const raw of ids) {
     const id = raw.trim().toLowerCase();
-    if (UUID_RE.test(id)) seen.add(id);
+    if (getServerDataBackend() === "mssql" ? isSqlGuid(id) : UUID_RE.test(id)) seen.add(id);
   }
   return [...seen];
 }

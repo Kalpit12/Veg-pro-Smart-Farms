@@ -1,9 +1,7 @@
 import type { Role } from "@/types/db";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import { isMssqlMissingObjectError } from "@/lib/mssql/sql-errors";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { isSqlGuid } from "@/lib/uuid";
 
 export async function listSupervisorGreenhouseIds(userId: string): Promise<string[]> {
   try {
@@ -32,7 +30,7 @@ export async function sqlSupervisorSiteFilter(
 ): Promise<string> {
   if (role !== "supervisor") return "";
   const ids = await listSupervisorGreenhouseIds(userId);
-  const safe = ids.filter((id) => UUID_RE.test(id));
+  const safe = ids.filter((id) => isSqlGuid(id));
   if (!safe.length) return " AND 1=0";
   const inList = safe.map((id) => `'${id}'`).join(",");
   return ` AND (
