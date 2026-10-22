@@ -33,10 +33,11 @@ export async function sqlSupervisorSiteFilter(
   const safe = ids.filter((id) => isSqlGuid(id));
   if (!safe.length) return " AND 1=0";
   const inList = safe.map((id) => `'${id}'`).join(",");
+  const assignedFarms = `SELECT DISTINCT farm_id FROM dbo.greenhouses WHERE id IN (${inList})`;
+  const greenhousesOnAssignedFarms = `SELECT id FROM dbo.greenhouses WHERE farm_id IN (${assignedFarms})`;
+  // All sites on the manager's farm(s), not only explicitly assigned rows (e.g. BEGH + STGH on Star).
   return ` AND (
-    ${greenhouseCol} IN (${inList})
-    OR (${greenhouseCol} IS NULL AND ${farmCol} IN (
-      SELECT farm_id FROM dbo.greenhouses WHERE id IN (${inList})
-    ))
+    ${greenhouseCol} IN (${greenhousesOnAssignedFarms})
+    OR ${farmCol} IN (${assignedFarms})
   )`;
 }
