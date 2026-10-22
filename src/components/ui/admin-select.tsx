@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -38,9 +39,16 @@ export function AdminSelect({
   const [query, setQuery] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
   const showSearch = options.length > 12;
+  const [panelStyle, setPanelStyle] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
 
   const selected = options.find((o) => o.value === value);
   const filtered = useMemo(() => {
@@ -51,13 +59,50 @@ export function AdminSelect({
     );
   }, [options, query]);
 
+  const updatePanelPosition = () => {
+    const trigger = rootRef.current?.querySelector("button");
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const gap = 6;
+    const viewportPad = 8;
+    const panelWidth = Math.min(window.innerWidth - viewportPad * 2, Math.max(rect.width, 280));
+    let left = align === "end" ? rect.right - panelWidth : rect.left;
+    left = Math.max(viewportPad, Math.min(left, window.innerWidth - panelWidth - viewportPad));
+
+    const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPad;
+    const spaceAbove = rect.top - gap - viewportPad;
+    const preferBelow = spaceBelow >= 160 || spaceBelow >= spaceAbove;
+    const maxHeight = Math.min(320, Math.max(120, preferBelow ? spaceBelow : spaceAbove));
+    const top = preferBelow ? rect.bottom + gap : rect.top - gap - maxHeight;
+
+    setPanelStyle({ top, left, width: panelWidth, maxHeight });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelStyle(null);
+      return;
+    }
+    updatePanelPosition();
+    const onReposition = () => updatePanelPosition();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open, align, options.length]);
+
   useEffect(() => {
     if (!open) {
       setQuery("");
       return;
     }
     const onPointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -136,65 +181,73 @@ export function AdminSelect({
         />
       </button>
 
-      {open ? (
-        <div
-          className={cn(
-            "absolute z-[80] mt-1.5 min-w-full overflow-hidden rounded-xl border border-primary/20 bg-background",
-            align === "end" ? "right-0" : "left-0",
-            "w-[min(100vw-2rem,22rem)]",
-          )}
-        >
-          {showSearch ? (
-            <div className="border-b border-border p-2">
-              <input
-                ref={searchRef}
-                className="w-full rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-sm"
-                placeholder="Search…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+      {open && panelStyle && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={panelRef}
+              style={{
+                position: "fixed",
+                top: panelStyle.top,
+                left: panelStyle.left,
+                width: panelStyle.width,
+                maxHeight: panelStyle.maxHeight,
+                zIndex: 9999,
+              }}
+              className="flex flex-col overflow-hidden rounded-xl border border-primary/20 bg-background shadow-lg"
+            >
+              {showSearch ? (
+                <div className="shrink-0 border-b border-border p-2">
+                  <input
+                    ref={searchRef}
+                    className="w-full rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-sm"
+                    placeholder="Search…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={onListKeyDown}
+                  />
+                </div>
+              ) : null}
+              <ul
+                id={listboxId}
+                role="listbox"
+                tabIndex={-1}
                 onKeyDown={onListKeyDown}
-              />
-            </div>
-          ) : null}
-          <ul
-            id={listboxId}
-            role="listbox"
-            tabIndex={-1}
-            onKeyDown={onListKeyDown}
-            className="max-h-64 overflow-y-auto p-1"
-          >
-            {filtered.length ? (
-              filtered.map((option, index) => {
-                const isSelected = option.value === value;
-                const isHighlighted = index === highlightIndex;
-                return (
-                  <li key={option.value} role="presentation">
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      onMouseEnter={() => setHighlightIndex(index)}
-                      onClick={() => selectOption(option.value)}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
-                        isHighlighted && "bg-primary/10",
-                        isSelected && "bg-primary/15 font-medium",
-                      )}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                      {isSelected ? (
-                        <Check className="size-4 shrink-0 text-primary" aria-hidden />
-                      ) : null}
-                    </button>
-                  </li>
-                );
-              })
-            ) : (
-              <li className="px-3 py-2 text-sm text-muted-foreground">No matches</li>
-            )}
-          </ul>
-        </div>
-      ) : null}
+                className="min-h-0 flex-1 overflow-y-auto p-1"
+              >
+                {filtered.length ? (
+                  filtered.map((option, index) => {
+                    const isSelected = option.value === value;
+                    const isHighlighted = index === highlightIndex;
+                    return (
+                      <li key={option.value} role="presentation">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onMouseEnter={() => setHighlightIndex(index)}
+                          onClick={() => selectOption(option.value)}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
+                            isHighlighted && "bg-primary/10",
+                            isSelected && "bg-primary/15 font-medium",
+                          )}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                          {isSelected ? (
+                            <Check className="size-4 shrink-0 text-primary" aria-hidden />
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })
+                ) : (
+                  <li className="px-3 py-2 text-sm text-muted-foreground">No matches</li>
+                )}
+              </ul>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
