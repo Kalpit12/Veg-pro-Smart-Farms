@@ -109,7 +109,12 @@ function computeKpis(
   };
 }
 
-export function ScoutingKpiDashboard() {
+export function ScoutingKpiDashboard({
+  liveUpdates = true,
+}: {
+  liveUpdates?: boolean;
+}) {
+  const poll = { enabled: liveUpdates };
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const isToday = isSameDay(selectedDay, new Date());
   const lookbackDays = Math.min(
@@ -117,8 +122,8 @@ export function ScoutingKpiDashboard() {
     Math.max(1, differenceInCalendarDays(startOfDay(new Date()), selectedDay) + 1),
   );
 
-  const { records } = useScoutingData(lookbackDays);
-  const { rounds: recentRounds } = useScoutingRounds(120);
+  const { records } = useScoutingData(lookbackDays, poll);
+  const { rounds: recentRounds } = useScoutingRounds(120, poll);
   const demoRounds = useScoutingStore((s) => s.demoRounds);
   const demoRecords = useScoutingStore((s) => s.demoRecords);
 

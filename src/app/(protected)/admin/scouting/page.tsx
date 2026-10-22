@@ -20,9 +20,9 @@ export default function AdminScoutingPage() {
         </p>
       </header>
 
-      <ScoutingKpiDashboard />
+      <ScoutingKpiDashboard liveUpdates={false} />
 
-      <ScoutingLiveAuditPanel />
+      <ScoutingLiveAuditPanel manualRefresh />
 
       <SprayWorkProgramPanel basePath="/admin" />
 

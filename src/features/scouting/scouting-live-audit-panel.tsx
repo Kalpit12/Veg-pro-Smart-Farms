@@ -167,7 +167,7 @@ export function ScoutingLiveAuditPanel({
   /** When true, data loads only when the user taps Refresh (farm manager scouting). */
   manualRefresh?: boolean;
 }) {
-  const { rounds, refresh } = useScoutingRounds(40);
+  const { rounds, refresh } = useScoutingRounds(40, { enabled: !manualRefresh });
   const active = rounds.filter((r) => r.status === "active");
   const [now, setNow] = useState(() => new Date());
   const [lastUpdated, setLastUpdated] = useState(() => new Date());

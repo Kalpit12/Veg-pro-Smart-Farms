@@ -23,12 +23,16 @@ function priorityBadge(p: SprayPriority) {
 export function SprayWorkProgramPanel({
   compact,
   basePath = "/manager",
+  liveUpdates = true,
 }: {
   compact?: boolean;
   basePath?: "/manager" | "/admin";
+  /** When false, loads once (admin dashboard — avoids 12s scouting poll). */
+  liveUpdates?: boolean;
 }) {
-  const { records, loading } = useScoutingData(7);
-  const resolutionHotspots = useHotspotResolutionRefs();
+  const poll = { enabled: liveUpdates };
+  const { records, loading } = useScoutingData(7, poll);
+  const resolutionHotspots = useHotspotResolutionRefs(poll);
   const program = useMemo(() => {
     const openRecords = filterUnresolvedScoutingRecords(records, resolutionHotspots);
     return buildSprayWorkProgram(openRecords.map(toSprayInput));

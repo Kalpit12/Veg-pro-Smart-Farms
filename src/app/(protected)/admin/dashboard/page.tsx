@@ -18,7 +18,7 @@ export default function AdminDashboardPage() {
       <YesterdayScoutedGreenhouses liveUpdates={false} />
       <MetricsGrid audience="admin" liveUpdates={false} />
       <OperationsAlerts audience="admin" liveUpdates={false} />
-      <SprayWorkProgramPanel compact basePath="/admin" />
+      <SprayWorkProgramPanel compact basePath="/admin" liveUpdates={false} />
       <div className="grid items-start gap-4 xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
           <ActivityChart />

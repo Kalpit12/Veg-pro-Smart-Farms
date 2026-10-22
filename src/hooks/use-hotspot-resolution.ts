@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import type { MssqlPollOptions } from "@/hooks/use-mssql-poll";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import {
   type HotspotResolutionRef,
@@ -24,7 +25,7 @@ function toResolutionRefs(
   }));
 }
 
-export function useHotspotResolutionRefs() {
+export function useHotspotResolutionRefs(options?: Pick<MssqlPollOptions, "enabled">) {
   const demoHotspots = useFieldOpsStore((s) => s.demoHotspots);
   const [hotspots, setHotspots] = useState<HotspotResolutionRef[]>([]);
 
@@ -43,7 +44,7 @@ export function useHotspotResolutionRefs() {
     void refresh();
   }, [refresh]);
 
-  useRealtimeHotspots(refresh);
+  useRealtimeHotspots(refresh, options);
 
   return hotspots;
 }
