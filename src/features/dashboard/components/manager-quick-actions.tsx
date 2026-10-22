@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CheckSquare, ClipboardList, Droplets, MapPin } from "lucide-react";
+import { ClipboardList, Droplets, MapPin, TrendingUp } from "lucide-react";
 
 const actions = [
   {
@@ -17,10 +17,10 @@ const actions = [
     icon: ClipboardList,
   },
   {
-    href: "/manager/approvals",
-    label: "Approvals",
-    description: "Pending worker submissions",
-    icon: CheckSquare,
+    href: "/manager/trends",
+    label: "Trends",
+    description: "Charts and field patterns",
+    icon: TrendingUp,
   },
   {
     href: "/manager/spray",
@@ -37,6 +37,7 @@ export function ManagerQuickActions() {
         <Link
           key={href}
           href={href}
+          prefetch={false}
           className="glass-card flex items-start gap-3 rounded-2xl p-4 transition hover:bg-primary/5"
         >
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">

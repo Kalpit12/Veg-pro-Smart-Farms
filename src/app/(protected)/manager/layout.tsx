@@ -7,7 +7,6 @@ const managerNav: NavItem[] = [
   { href: "/manager/scouting", label: "Scouting", icon: "logs" },
   { href: "/manager/workers", label: "Workers", icon: "workers" },
   { href: "/manager/spray", label: "Log spray", icon: "spray" },
-  { href: "/manager/approvals", label: "Approvals", icon: "supervisor" },
   { href: "/manager/history", label: "History", icon: "history" },
   { href: "/manager/trends", label: "Trends", icon: "trends" },
 ];

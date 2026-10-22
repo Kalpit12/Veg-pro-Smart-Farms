@@ -1,12 +1,13 @@
 "use client";
 
+import { ActivityChart } from "@/features/dashboard/components/activity-chart";
+import { AdminDailyAnalytics } from "@/features/dashboard/components/admin-daily-analytics";
 import { YesterdayScoutedGreenhouses } from "@/features/dashboard/components/yesterday-scouted-greenhouses";
 import { LiveActivityFeed } from "@/features/dashboard/components/live-activity-feed";
 import { ManagerQuickActions } from "@/features/dashboard/components/manager-quick-actions";
 import { MetricsGrid } from "@/features/dashboard/components/metrics-grid";
 import { OperationsAlerts } from "@/features/dashboard/components/operations-alerts";
 import { PendingInfestationQueue } from "@/features/infestation/pending-infestation-queue";
-import { SprayWorkProgramPanel } from "@/features/scouting/spray-work-program-panel";
 
 export function ManagerDashboardView() {
   return (
@@ -18,12 +19,20 @@ export function ManagerDashboardView() {
       />
       <MetricsGrid audience="manager" managerDashboardFilters />
       <PendingInfestationQueue compact managerDashboardFilters />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SprayWorkProgramPanel basePath="/manager" managerDashboardFilters />
-        <OperationsAlerts audience="manager" managerDashboardFilters />
+      <OperationsAlerts audience="manager" managerDashboardFilters />
+      <div className="grid items-start gap-4 xl:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
+          <ActivityChart />
+          <AdminDailyAnalytics section="mix" />
+        </div>
+        <LiveActivityFeed
+          variant="manager"
+          managerDashboardFilters
+          className="xl:sticky xl:top-4"
+        />
       </div>
+      <AdminDailyAnalytics section="houses" />
       <ManagerQuickActions />
-      <LiveActivityFeed variant="manager" managerDashboardFilters />
     </section>
   );
 }

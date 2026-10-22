@@ -7,7 +7,6 @@ import { ScoutingKpiDashboard } from "@/features/scouting/scouting-kpi-dashboard
 import { ScoutingLiveAuditPanel } from "@/features/scouting/scouting-live-audit-panel";
 import { ScoutingPressurePanel } from "@/features/scouting/scouting-pressure-panel";
 import { ScoutingRecordsTable } from "@/features/scouting/scouting-records-table";
-import { SprayWorkProgramPanel } from "@/features/scouting/spray-work-program-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ManagerScoutingPage() {
@@ -23,8 +22,6 @@ export default function ManagerScoutingPage() {
       <ScoutingKpiDashboard />
 
       <ScoutingLiveAuditPanel manualRefresh />
-
-      <SprayWorkProgramPanel />
 
       <div className="grid gap-6 xl:grid-cols-2">
         <GreenhouseHeatGrid />

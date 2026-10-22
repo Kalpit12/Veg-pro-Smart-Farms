@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { captureGps, formatGps } from "@/lib/gps";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
-import { putEvidenceBlob } from "@/lib/offline-evidence-store";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
@@ -23,24 +22,13 @@ import {
   updateHotspotAfterSpray,
 } from "@/services/supabase/infestation-service";
 import { logSpray } from "@/services/supabase/spray-service";
-import { uploadActivityEvidence } from "@/services/supabase/storage-service";
 
-const schema = z
-  .object({
-    product_name: z.string().min(2, "Enter product name"),
-    notes: z.string().optional(),
-    hotspot_id: z.string().optional(),
-    severity_after: z.number().int().min(1).max(5).optional(),
-  })
-  .superRefine((values, ctx) => {
-    if (values.hotspot_id && (values.severity_after == null || Number.isNaN(values.severity_after))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["severity_after"],
-        message: "Record post-spray severity (1–5) to close the evaluate loop",
-      });
-    }
-  });
+const schema = z.object({
+  product_name: z.string().min(2, "Enter product name"),
+  notes: z.string().optional(),
+  hotspot_id: z.string().optional(),
+  severity_after: z.number().int().min(1).max(5).optional(),
+});
 
 type FormValues = z.infer<typeof schema>;
 
@@ -66,7 +54,6 @@ export function LogSprayForm({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [gpsLabel, setGpsLabel] = useState("Will capture on submit");
-  const [file, setFile] = useState<File | null>(null);
   const [hotspots, setHotspots] = useState<SprayHotspotOption[]>([]);
   const { toast } = useToast();
   const scan = useScanStore();
@@ -304,7 +291,6 @@ export function LogSprayForm({
               hotspot_id: "",
               severity_after: undefined,
             });
-            setFile(null);
             if (resumeHotspot?.id === hotspotId) {
               clearResumeHotspot();
             }
@@ -320,51 +306,6 @@ export function LogSprayForm({
 
           const offline =
             typeof navigator !== "undefined" && navigator.onLine === false;
-
-          let imagePath: string | null = null;
-          let pendingPhoto:
-            | { blobKey: string; fileName: string; contentType: string }
-            | undefined;
-          if (file && !offline) {
-            try {
-              imagePath = await uploadActivityEvidence(file);
-            } catch (uploadError) {
-              if (isLikelyOfflineError(uploadError) && file) {
-                const blobKey = `spray-${crypto.randomUUID()}`;
-                await putEvidenceBlob(blobKey, file, {
-                  fileName: file.name,
-                  contentType: file.type || "image/jpeg",
-                });
-                pendingPhoto = {
-                  blobKey,
-                  fileName: file.name,
-                  contentType: file.type || "image/jpeg",
-                };
-              } else if (!isLikelyOfflineError(uploadError)) {
-                toast({
-                  title: "Photo did not upload",
-                  description: "Spray will still save without the photo.",
-                  tone: "default",
-                });
-              }
-            }
-          } else if (file && offline) {
-            const blobKey = `spray-${crypto.randomUUID()}`;
-            await putEvidenceBlob(blobKey, file, {
-              fileName: file.name,
-              contentType: file.type || "image/jpeg",
-            });
-            pendingPhoto = {
-              blobKey,
-              fileName: file.name,
-              contentType: file.type || "image/jpeg",
-            };
-            toast({
-              title: "Photo queued offline",
-              description: "Photo will upload with this spray when you reconnect.",
-              tone: "default",
-            });
-          }
 
           const beforeSeverity =
             hotspotId && linkedHotspot && "severity" in linkedHotspot
@@ -383,7 +324,7 @@ export function LogSprayForm({
             longitude: coords.longitude,
             product_name: values.product_name,
             notes: values.notes || null,
-            image_url: imagePath,
+            image_url: null,
             severity_before: beforeSeverity,
             severity_after: afterSeverity,
           };
@@ -413,14 +354,12 @@ export function LogSprayForm({
               hotspot_id: "",
               severity_after: undefined,
             });
-            setFile(null);
             onSuccess?.();
           };
 
-          if (offline || pendingPhoto) {
+          if (offline) {
             enqueueSpray(payload, {
               markHotspotSprayed: Boolean(hotspotId),
-              pendingPhoto,
             });
             finishSpray(true);
             return;
@@ -432,7 +371,6 @@ export function LogSprayForm({
             if (isLikelyOfflineError(error)) {
               enqueueSpray(payload, {
                 markHotspotSprayed: Boolean(hotspotId),
-                pendingPhoto,
               });
               finishSpray(true);
               return;
@@ -531,7 +469,7 @@ export function LogSprayForm({
         </p>
       ) : null}
 
-      {selectedHotspotId ? (
+      {audience !== "manager" && selectedHotspotId ? (
         <fieldset className="space-y-2 rounded-xl border border-border p-3" data-testid="spray-evaluate">
           <legend className="px-1 text-sm font-semibold">Evaluate after spray</legend>
           <p className="text-xs text-muted-foreground">
@@ -587,17 +525,6 @@ export function LogSprayForm({
         <textarea
           className="min-h-16 w-full rounded-xl border border-border bg-background px-3 py-3 text-base"
           {...form.register("notes")}
-        />
-      </label>
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Photo (optional)</span>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="w-full text-sm"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
       </label>
 
