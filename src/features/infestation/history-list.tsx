@@ -27,7 +27,7 @@ import {
   type GreenhouseConditionCompare,
 } from "@/lib/greenhouse-condition";
 import { getHistorySinceDate, HISTORY_LOOKBACK_MONTHS } from "@/lib/history-range";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { listHotspotsForHistory } from "@/services/supabase/infestation-service";
 import { listSpraysForHistory } from "@/services/supabase/spray-service";
 import { useFieldOpsStore } from "@/store/field-ops-store";
@@ -148,7 +148,7 @@ export function HistoryList() {
   const refresh = useCallback(async () => {
     const greenhouseId = greenhouseFilter || undefined;
 
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const options = getDemoGreenhouseOptions().map((g) => ({
         id: g.id,
         label: g.label,
@@ -266,7 +266,7 @@ export function HistoryList() {
   const conditionCompare = useMemo((): GreenhouseConditionCompare | null => {
     if (!greenhouseFilter) return null;
 
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       return getDemoGreenhouseCondition(greenhouseFilter);
     }
 
@@ -276,7 +276,7 @@ export function HistoryList() {
   const improvementTrend = useMemo(() => {
     if (!conditionCompare || !greenhouseFilter) return [];
 
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       return buildImprovementTrendFromCompare(conditionCompare);
     }
 

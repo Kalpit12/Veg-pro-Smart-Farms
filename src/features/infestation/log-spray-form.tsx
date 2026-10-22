@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { captureGps, formatGps } from "@/lib/gps";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
 import { putEvidenceBlob } from "@/lib/offline-evidence-store";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
@@ -87,7 +87,7 @@ export function LogSprayForm({
   });
 
   useEffect(() => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const pool =
         audience === "manager"
           ? demoHotspots.filter((h) => h.status === "active")
@@ -195,7 +195,7 @@ export function LogSprayForm({
               hotspots.find((h) => h.id === hotspotId)
             : null;
 
-          if (hotspotId && hasSupabaseEnv()) {
+          if (hotspotId && hasConfiguredBackend()) {
             try {
               const { data: authoritative, error: hotspotError } =
                 await getHotspotById(hotspotId);
@@ -260,12 +260,12 @@ export function LogSprayForm({
                     longitude: resumeHotspot.longitude,
                   }
                 : await captureGps({
-                    allowDemoFallback: !hasSupabaseEnv(),
+                    allowDemoFallback: isOfflineDemo(),
                     anchorFallback: gpsAnchorForFieldWork(null, greenhouseId),
                   });
           setGpsLabel(formatGps(coords));
 
-          if (!hasSupabaseEnv()) {
+          if (isOfflineDemo()) {
             const actorName =
               audience === "manager" ? "Farm manager" : "Field worker";
             addDemoSpray({

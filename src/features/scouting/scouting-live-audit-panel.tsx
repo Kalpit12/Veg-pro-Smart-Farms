@@ -10,7 +10,7 @@ import { PhotoEvidenceLink } from "@/features/evidence/photo-evidence-link";
 import { useScoutingRounds } from "@/hooks/use-scouting-data";
 import { samplingTargetForGreenhouse } from "@/lib/scout-sampling";
 import { formatDistance, formatDuration, durationSeconds } from "@/lib/route-metrics";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { listRecordsForRound } from "@/services/supabase/scouting-round-service";
 import { useScoutingStore } from "@/store/scouting-store";
 
@@ -29,7 +29,7 @@ function useRoundPhotos(roundId: string, status: string, refreshKey: number) {
       setPhotos([]);
       return;
     }
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setPhotos(
         demoRecords
           .filter((r) => r.roundId === roundId && r.imageUrl)

@@ -8,7 +8,7 @@ import {
   deleteEvidenceBlob,
   getEvidenceBlob,
 } from "@/lib/offline-evidence-store";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import {
   reportInfestation,
   updateHotspotAfterSpray,
@@ -122,7 +122,7 @@ export function FieldWriteQueueSync() {
   const flushingRef = useRef(false);
 
   const flush = useCallback(async () => {
-    if (!hasSupabaseEnv()) return;
+    if (isOfflineDemo()) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
     if (flushingRef.current) return;
     const pending = useFieldWriteQueueStore.getState().items;

@@ -15,7 +15,7 @@ import {
   buildTrendDateLabels,
   listTrendDateKeys,
 } from "@/lib/demo-trends";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import {
   buildTrendsGrid,
   collectFilterOptions,
@@ -156,7 +156,7 @@ export function TrendsGrid({
   }, [scope, assignedGreenhouses]);
 
   const loadSprays = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setSprays(buildDemoSprayRows(days));
       return;
     }
@@ -180,7 +180,7 @@ export function TrendsGrid({
 
   const sourceRows: TrendsScoutingRow[] = useMemo(() => {
     let rows: TrendsScoutingRow[];
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       rows = buildDemoTrendsRows(days);
     } else {
       rows = records.map((r) => ({
@@ -229,8 +229,8 @@ export function TrendsGrid({
     const dateLabels = buildTrendDateLabels(dates, mode);
 
     const scoped = scope === "assigned";
-    const liveEmpty = hasSupabaseEnv() && sourceRows.length === 0;
-    const useDemoFallback = !scoped && (!hasSupabaseEnv() || liveEmpty);
+    const liveEmpty = hasConfiguredBackend() && sourceRows.length === 0;
+    const useDemoFallback = !scoped && (isOfflineDemo() || liveEmpty);
 
     const rows = useDemoFallback ? buildDemoTrendsRows(days) : filteredRows;
     const sprayRows = useDemoFallback ? buildDemoSprayRows(days) : sprays;
@@ -286,14 +286,14 @@ export function TrendsGrid({
     return list;
   }, [model, sortOrder, redOnly]);
 
-  if ((loading && hasSupabaseEnv()) || (scope === "assigned" && assignedGreenhouses === null)) {
+  if ((loading && hasConfiguredBackend()) || (scope === "assigned" && assignedGreenhouses === null)) {
     return <Skeleton className="h-96 w-full rounded-2xl" />;
   }
 
   const latestDate = model.dates[model.dates.length - 1];
   const { summary } = model;
   const showingDemoFallback =
-    scope !== "assigned" && (!hasSupabaseEnv() || sourceRows.length === 0);
+    scope !== "assigned" && (isOfflineDemo() || sourceRows.length === 0);
 
   return (
     <div className="space-y-4">
@@ -536,7 +536,7 @@ export function TrendsGrid({
           ? " (filtered)"
           : ""}
         . Empty cells (·) mean not scouted — not necessarily clean.
-        {!hasSupabaseEnv() || showingDemoFallback
+        {isOfflineDemo() || showingDemoFallback
           ? " Showing demo trend data."
           : null}
       </p>

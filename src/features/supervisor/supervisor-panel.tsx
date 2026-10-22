@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { listActivities, setActivityStatus } from "@/services/supabase/activity-service";
 import { useRealtimeActivities } from "@/hooks/use-realtime-activities";
 import { getEvidenceSignedUrl } from "@/services/supabase/storage-service";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 
 type Item = {
   id: string;
@@ -26,7 +26,7 @@ export function SupervisorPanel() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setItems([
         {
           id: "demo-sub-1",
@@ -66,7 +66,7 @@ export function SupervisorPanel() {
   useRealtimeActivities(refresh);
 
   const setStatus = async (id: string, status: "approved" | "rejected") => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       toast({
         title: `Demo mode: ${status}`,
         description: "Connect Supabase to persist approval decisions.",

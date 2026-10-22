@@ -20,7 +20,7 @@ import {
   useFieldOpsStore,
 } from "@/store/field-ops-store";
 import { buildHotspotTrail, type TrailPoint } from "@/lib/hotspot-trail";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useHotspotTrailStore } from "@/store/hotspot-trail-store";
 import { useScoutingStore } from "@/store/scouting-store";
 import {
@@ -77,7 +77,7 @@ export function FarmMap() {
   const [locateWorkersKey, setLocateWorkersKey] = useState(0);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setHotspots(demoHotspots);
       setSprays(demoSprays);
       setPositions(getDemoWorkerPositions());
@@ -135,7 +135,7 @@ export function FarmMap() {
     const since = new Date(hotspot.created_at);
     const gpsCrumbs = getBreadcrumbs(hotspot.id);
 
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const linkedSprays = demoSprays.filter((s) => s.hotspot_id === hotspot.id);
       const linkedScouts = demoScouting
         .filter(
@@ -283,7 +283,7 @@ export function FarmMap() {
     const hotspot = selected.data;
 
     try {
-      if (!hasSupabaseEnv()) {
+      if (isOfflineDemo()) {
         updateDemoHotspotStatus(hotspot.id, status);
         setHotspots((prev) =>
           prev.map((h) => (h.id === hotspot.id ? { ...h, status } : h)),

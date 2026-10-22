@@ -31,7 +31,7 @@ import {
   pressureByGreenhouse,
   pressureByVariety,
 } from "@/lib/demo-scouting-pressure";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { getScoutingPressureByGreenhouse } from "@/services/supabase/scouting-service";
 import { useScoutingStore } from "@/store/scouting-store";
 
@@ -53,7 +53,7 @@ type TopIssueRow = {
 export function ScoutingPressurePanel() {
   const demoRecords = useScoutingStore((s) => s.demoRecords);
   const resolutionHotspots = useHotspotResolutionRefs();
-  const [loading, setLoading] = useState(hasSupabaseEnv());
+  const [loading, setLoading] = useState(hasConfiguredBackend());
   const [remoteGh, setRemoteGh] = useState<
     { greenhouse: string; diseasePressure: number; pestPressure: number }[]
   >([]);
@@ -62,7 +62,7 @@ export function ScoutingPressurePanel() {
   >([]);
 
   const loadRemote = useCallback(async () => {
-    if (!hasSupabaseEnv()) return;
+    if (isOfflineDemo()) return;
     setLoading(true);
     const since = new Date();
     since.setDate(since.getDate() - 30);
@@ -106,7 +106,7 @@ export function ScoutingPressurePanel() {
   const ghPressure = useMemo(() => {
     const activeDemo = filterUnresolvedScoutingRecords(demoRecords, resolutionHotspots);
     const raw =
-      hasSupabaseEnv() && remoteGh.length
+      hasConfiguredBackend() && remoteGh.length
         ? remoteGh
         : pressureByGreenhouse(activeDemo).map((r) => ({
             greenhouse: r.greenhouse,
@@ -125,7 +125,7 @@ export function ScoutingPressurePanel() {
         status: getIssueResolutionStatus(row.greenhouse, row.issue, resolutionHotspots),
       }));
 
-    if (hasSupabaseEnv() && remoteVar.length) {
+    if (hasConfiguredBackend() && remoteVar.length) {
       return withStatus(remoteVar);
     }
 
@@ -145,7 +145,7 @@ export function ScoutingPressurePanel() {
   const chartHeight = Math.min(520, Math.max(280, ghPressure.length * 30));
   const hasChartData = ghPressure.some((row) => row.disease > 0 || row.pest > 0);
 
-  if (loading && hasSupabaseEnv()) {
+  if (loading && hasConfiguredBackend()) {
     return <Skeleton className="h-64 w-full rounded-2xl" />;
   }
 

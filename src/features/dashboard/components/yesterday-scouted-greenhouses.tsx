@@ -17,7 +17,7 @@ import {
   type YesterdayScoutRound,
 } from "@/lib/scouting-yesterday";
 import { formatDistance, formatDuration } from "@/lib/route-metrics";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
 import {
   listScoutingRounds,
@@ -67,7 +67,7 @@ export function YesterdayScoutedGreenhouses({
   const load = useCallback(async () => {
     if (scope === "assigned" && assignedGreenhouseIds === null) return;
     setLoading(true);
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const list = filterByScope(
         dedupeByGreenhouse(filterRoundsStartedYesterday(demoRounds)),
       );

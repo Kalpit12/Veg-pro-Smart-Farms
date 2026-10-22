@@ -11,7 +11,7 @@ import { useDemoRefresh } from "@/hooks/use-demo-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoWorkerRows } from "@/lib/demo-field-data";
 import { excelFilename, workersToExcel } from "@/lib/admin-export-mappers";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import {
   listWorkerOpsRows,
   type WorkerOpsRow,
@@ -27,7 +27,7 @@ export function WorkersTable() {
   const [greenhouseFilter, setGreenhouseFilter] = useState("all");
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const liveReports: WorkerOpsRow[] = demoHotspots
         .filter((h) => h.status === "active")
         .map((h) => ({

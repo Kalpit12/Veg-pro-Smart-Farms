@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtimeAlerts } from "@/hooks/use-realtime-alerts";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoAlerts } from "@/lib/demo-field-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { listOpenAlerts } from "@/services/supabase/alert-service";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 
@@ -46,7 +46,7 @@ export function OperationsAlerts({
   const demoAlerts = useFieldOpsStore((s) => s.demoAlerts);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const merged = filterAlertsForAudience(
         [...demoAlerts, ...getDemoAlerts()].sort(
           (a, b) =>

@@ -17,7 +17,6 @@ import {
   useScoutingSessionStore,
 } from "@/store/scouting-session-store";
 import { useScoutingStore } from "@/store/scouting-store";
-import { hasConfiguredBackend } from "@/lib/data-backend";
 import { resolveScoutCoords } from "@/lib/cell-gps";
 import { captureGps, formatGps } from "@/lib/gps";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
@@ -36,7 +35,7 @@ import {
   type IssueKind,
   type PlantZoneId,
 } from "@/lib/plant-zones";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { cn } from "@/lib/utils";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
@@ -343,7 +342,7 @@ export function ReportInfestationForm({
       setSubmitting(true);
       try {
         const live = await captureGps({
-          allowDemoFallback: !hasSupabaseEnv(),
+          allowDemoFallback: isOfflineDemo(),
           anchorFallback: gpsAnchorForFieldWork(resumeHotspot, scan.greenhouseId),
         });
         const coords =
@@ -360,7 +359,7 @@ export function ReportInfestationForm({
 
         const offline = typeof navigator !== "undefined" && navigator.onLine === false;
 
-        if (file && !offline && hasSupabaseEnv()) {
+        if (file && !offline && hasConfiguredBackend()) {
           try {
             await uploadActivityEvidence(file);
           } catch {
@@ -380,7 +379,7 @@ export function ReportInfestationForm({
 
         let queuedAny = false;
 
-        if (!hasSupabaseEnv()) {
+        if (isOfflineDemo()) {
           for (const line of lines) {
             const detail = describeReportLine(line, zoneConfig.label);
             const mainIssue = [

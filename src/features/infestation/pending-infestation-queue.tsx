@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDemoRefresh } from "@/hooks/use-demo-refresh";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import { useToast } from "@/hooks/use-toast";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import {
   listActiveHotspots,
   type HotspotRow,
@@ -61,7 +61,7 @@ export function PendingInfestationQueue({
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setRows(demoHotspots.filter((h) => h.status === "active"));
       setLoading(false);
       return;

@@ -18,7 +18,7 @@ import { useDemoRefresh } from "@/hooks/use-demo-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { buildDemoWorkerTrends } from "@/lib/demo-worker-trends";
 import { formatDistance, formatDuration } from "@/lib/route-metrics";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { cn } from "@/lib/utils";
 import {
   buildWorkerSummaries,
@@ -84,7 +84,7 @@ export function WorkerTrendsPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      if (!hasSupabaseEnv()) {
+      if (isOfflineDemo()) {
         const demo = buildDemoWorkerTrends(days);
         setWorkers(demo.workers);
         setEvents(demo.events);
@@ -313,7 +313,7 @@ export function WorkerTrendsPanel() {
         ) : null}
       </div>
 
-      {!hasSupabaseEnv() ? (
+      {isOfflineDemo() ? (
         <p className="text-xs text-muted-foreground">
           Showing demo worker trends.
         </p>

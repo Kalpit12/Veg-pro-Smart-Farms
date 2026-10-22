@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 
 /** Re-renders demo UIs so relative timestamps stay accurate */
 export function useDemoRefresh(intervalMs = 45_000) {
   const [tick, setTick] = useState(0);
-  const demo = !hasSupabaseEnv();
+  const demo = isOfflineDemo();
 
   useEffect(() => {
     if (!demo) return;

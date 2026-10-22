@@ -12,7 +12,7 @@ import { WorkerLocationPanel } from "@/features/scouting/worker-location-panel";
 import { Button } from "@/components/ui/button";
 import { useGreenhouseAnchorsSync } from "@/hooks/use-greenhouse-anchors-sync";
 import type { ScoutCellLocation } from "@/lib/scout-observation-flow";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useScanStore } from "@/store/scan-store";
 import {
   isScoutingWalkEngaged,
@@ -34,7 +34,7 @@ export function FieldWorkPanel() {
     walkEngaged,
     session,
     demoRoundId,
-    hasSupabaseEnv(),
+    hasConfiguredBackend(),
   );
 
   const resetFlow = () => {

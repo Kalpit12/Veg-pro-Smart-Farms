@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { BEMACK_DEMO_LOCATIONS } from "@/lib/bemack-master-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { resolveQrValue } from "@/services/supabase/qr-service";
 import { useScanStore } from "@/store/scan-store";
 import { useToast } from "@/hooks/use-toast";
@@ -53,7 +53,7 @@ export function QrScanner() {
     <div className="glass-card space-y-3 rounded-2xl p-4">
       <h2 className="text-lg font-semibold">Scan greenhouse QR</h2>
 
-      {!hasSupabaseEnv() ? (
+      {isOfflineDemo() ? (
         <div className="space-y-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
           <p className="text-xs font-medium text-muted-foreground">Demo — skip camera</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -115,7 +115,7 @@ export function QrScanner() {
         onClick={async () => {
           try {
             setResolving(true);
-            if (!hasSupabaseEnv()) {
+            if (isOfflineDemo()) {
               const bemack = BEMACK_DEMO_LOCATIONS.find(
                 (l) => l.qrValue === value || value.includes("BEMACK"),
               );

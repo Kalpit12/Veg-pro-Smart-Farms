@@ -13,7 +13,7 @@ import {
   formatStarGreenhouseLabel,
 } from "@/lib/bemack-master-data";
 import { useToast } from "@/hooks/use-toast";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
 import { useScanStore } from "@/store/scan-store";
 import {
@@ -41,7 +41,7 @@ export function WorkerLocationPanel() {
     walkEngaged,
     scoutingSession,
     demoRoundId,
-    hasSupabaseEnv(),
+    hasConfiguredBackend(),
   );
 
   useEffect(() => {

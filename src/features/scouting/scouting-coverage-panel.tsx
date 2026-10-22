@@ -14,7 +14,7 @@ import {
 } from "@/lib/bemack-master-data";
 import { buildCoverageModel } from "@/lib/scouting-coverage";
 import { formatDistance, formatDuration } from "@/lib/route-metrics";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useScoutingData, useScoutingRounds } from "@/hooks/use-scouting-data";
 import { useScoutingStore } from "@/store/scouting-store";
 import { cn } from "@/lib/utils";
@@ -40,7 +40,7 @@ export function ScoutingCoveragePanel() {
         latitude: r.latitude,
         longitude: r.longitude,
       }));
-    const routePoints = hasSupabaseEnv()
+    const routePoints = hasConfiguredBackend()
       ? []
       : demoRoutePoints
           .filter((p) => {
@@ -111,7 +111,7 @@ export function ScoutingCoveragePanel() {
   const dailyHistory = useMemo(() => {
     const since = subDays(new Date(), 7);
 
-    if (hasSupabaseEnv()) {
+    if (hasConfiguredBackend()) {
       const recentRounds = rounds
         .filter((r) => isAfter(new Date(r.startedAt), since))
         .sort(

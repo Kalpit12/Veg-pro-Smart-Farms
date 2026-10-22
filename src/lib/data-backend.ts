@@ -18,6 +18,11 @@ export function isOfflineDemo() {
   return !hasConfiguredBackend();
 }
 
+/** Use real DB APIs (MSSQL or Supabase), not in-browser demo stores. */
+export function usesProductionData() {
+  return hasConfiguredBackend();
+}
+
 export type ServerDataBackend = "mssql" | "supabase" | "demo";
 
 export function getServerDataBackend(): ServerDataBackend {

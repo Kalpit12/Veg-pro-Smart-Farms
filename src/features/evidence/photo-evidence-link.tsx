@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 
 import { getEvidenceSignedUrl } from "@/services/supabase/storage-service";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 
 export function PhotoEvidenceLink({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!hasSupabaseEnv() || path.startsWith("demo-photo://")) {
+    if (isOfflineDemo() || path.startsWith("demo-photo://")) {
       setUrl(null);
       return;
     }

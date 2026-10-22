@@ -14,7 +14,7 @@ import {
   getDemoLiveActivities,
   type DemoLiveActivity,
 } from "@/lib/demo-field-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import {
   listFieldFeed,
   type FieldFeedItem,
@@ -168,7 +168,7 @@ export function LiveActivityFeed({
   const demoScouting = useScoutingStore((s) => s.demoRecords);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const fromStores: FeedItem[] = [
         ...demoSprays.map((s) => ({
           id: `spray-${s.id}`,

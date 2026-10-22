@@ -10,7 +10,7 @@ import { useScanStore } from "@/store/scan-store";
 import { getCurrentUser } from "@/services/supabase/auth-service";
 import { submitActivity } from "@/services/supabase/activity-service";
 import { uploadActivityEvidence } from "@/services/supabase/storage-service";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 
 const schema = z.object({
   activity_type: z.string().min(3),
@@ -61,7 +61,7 @@ export function ActivityForm() {
           }
           setSubmitting(true);
 
-          if (!hasSupabaseEnv()) {
+          if (isOfflineDemo()) {
             toast({
               title: "Demo activity submitted",
               description: "Connect Supabase to persist this submission.",

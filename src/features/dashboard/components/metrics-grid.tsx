@@ -11,7 +11,7 @@ import { useRealtimePositions } from "@/hooks/use-realtime-positions";
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoKpis } from "@/lib/demo-field-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { getDashboardKpis } from "@/services/supabase/dashboard-service";
 
 export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "admin" }) {
@@ -27,7 +27,7 @@ export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "
   const { toast } = useToast();
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const base = getDemoKpis();
       const scoutingStopsToday = scoutingRecords.filter((r) => {
         const d = new Date(r.recordedAt);
@@ -70,7 +70,7 @@ export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "
   useRealtimePositions(refresh);
   useRealtimeScouting(refresh);
 
-  const demoScoutingToday = !hasSupabaseEnv()
+  const demoScoutingToday = isOfflineDemo()
     ? scoutingRecords.filter((r) => {
         const d = new Date(r.recordedAt);
         const t = new Date();

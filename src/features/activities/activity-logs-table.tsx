@@ -15,7 +15,7 @@ import { ExportExcelButton } from "@/components/export-excel-button";
 import { getEvidenceSignedUrl } from "@/services/supabase/storage-service";
 import { getDemoActivityLogs } from "@/lib/demo-field-data";
 import { activityLogsToExcel, excelFilename } from "@/lib/admin-export-mappers";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { useScoutingStore } from "@/store/scouting-store";
 
@@ -30,7 +30,7 @@ export function ActivityLogsTable() {
   const demoScouting = useScoutingStore((s) => s.demoRecords);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const merged = buildDemoUnifiedActivityLogs({
         hotspots: demoHotspots,
         sprays: demoSprays,

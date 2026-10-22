@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { GreenhouseHeatGrid } from "@/features/scouting/greenhouse-heat-grid";
 import { formatStarGreenhouseLabel, issueShortCode } from "@/lib/bemack-master-data";
 import { formatDistance, formatDuration, durationSeconds } from "@/lib/route-metrics";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import type { YesterdayScoutRound } from "@/lib/scouting-yesterday";
 import { listRecordsForRound } from "@/services/supabase/scouting-round-service";
 import { useScoutingStore, type DemoScoutingRecord } from "@/store/scouting-store";
@@ -53,11 +53,11 @@ export function ScoutingRoundReportDetail({
   scoutingBasePath = "/admin/scouting",
 }: Props) {
   const demoRecords = useScoutingStore((s) => s.demoRecords);
-  const [loading, setLoading] = useState(hasSupabaseEnv());
+  const [loading, setLoading] = useState(hasConfiguredBackend());
   const [records, setRecords] = useState<ReportRecord[]>([]);
 
   const load = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setRecords(
         demoRecords
           .filter((r) => r.roundId === round.roundId)

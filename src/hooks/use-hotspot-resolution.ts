@@ -6,7 +6,7 @@ import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import {
   type HotspotResolutionRef,
 } from "@/lib/issue-resolution";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { listHotspots } from "@/services/supabase/infestation-service";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 
@@ -29,7 +29,7 @@ export function useHotspotResolutionRefs() {
   const [hotspots, setHotspots] = useState<HotspotResolutionRef[]>([]);
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setHotspots(toResolutionRefs(demoHotspots));
       return;
     }

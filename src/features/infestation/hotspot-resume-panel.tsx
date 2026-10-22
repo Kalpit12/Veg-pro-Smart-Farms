@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { useResumeHotspotStore, type ResumeHotspot } from "@/store/resume-hotspot-store";
 import { useScanStore } from "@/store/scan-store";
@@ -28,7 +28,7 @@ export function HotspotResumePanel() {
       return;
     }
 
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setHotspots(
         demoHotspots
           .filter((h) => h.greenhouse_id === scan.greenhouseId && h.status === "active")

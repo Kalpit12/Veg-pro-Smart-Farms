@@ -6,7 +6,7 @@ import { MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DEMO_FARMS, DEMO_WORKERS } from "@/lib/demo-field-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import { useRealtimePositions } from "@/hooks/use-realtime-positions";
 import { getCurrentUser } from "@/services/supabase/auth-service";
@@ -34,7 +34,7 @@ export function WorkerLiveStatus() {
   });
 
   const refresh = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       const worker = DEMO_WORKERS[0];
       const farm = DEMO_FARMS[worker.farmKey];
       setLive({

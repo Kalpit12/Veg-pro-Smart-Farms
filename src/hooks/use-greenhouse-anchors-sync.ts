@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { listGreenhouseAnchors } from "@/services/supabase/greenhouse-service";
 import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
 
@@ -12,7 +12,7 @@ export function useGreenhouseAnchorsSync() {
   const resetToSynthetic = useGreenhouseAnchorStore((s) => s.resetToSynthetic);
 
   useEffect(() => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       resetToSynthetic();
       return;
     }

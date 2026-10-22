@@ -21,7 +21,7 @@ import {
 } from "@/features/dashboard/components/chart-theme";
 import { VegProChartTooltip } from "@/features/dashboard/components/vegpro-chart-tooltip";
 import { compareStarGreenhouseName, formatAreaSqm, starGreenhouseRow } from "@/lib/bemack-master-data";
-import { hasSupabaseEnv } from "@/lib/supabase/config";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -63,7 +63,7 @@ export function CropIntelligencePanel() {
   const [selectedType, setSelectedType] = useState<string>("all");
 
   const load = useCallback(async () => {
-    if (!hasSupabaseEnv()) {
+    if (isOfflineDemo()) {
       setRows([
         { crop_type: "Cut Rose", name: "STGH01A", farms: { name: "Star" } },
         { crop_type: "Cut Rose", name: "STGH02A", farms: { name: "Star" } },
