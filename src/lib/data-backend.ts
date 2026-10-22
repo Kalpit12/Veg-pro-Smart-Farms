@@ -14,8 +14,17 @@ export function hasConfiguredBackend() {
   return hasSupabaseEnv() || hasMssqlEnv();
 }
 
+declare global {
+  interface Window {
+    /** Set after /api/app/config when server uses MSSQL/Supabase. */
+    __VEGPRO_FORCE_PRODUCTION__?: boolean;
+  }
+}
+
 export function isOfflineDemo() {
-  return !hasConfiguredBackend();
+  if (hasConfiguredBackend()) return false;
+  if (typeof window !== "undefined" && window.__VEGPRO_FORCE_PRODUCTION__) return false;
+  return true;
 }
 
 /** Use real DB APIs (MSSQL or Supabase), not in-browser demo stores. */

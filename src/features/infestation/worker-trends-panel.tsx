@@ -93,12 +93,6 @@ export function WorkerTrendsPanel() {
 
       const since = subDays(new Date(), days);
       const data = await listWorkerTrendsSince(since);
-      if (data.workers.length === 0 && data.events.length === 0) {
-        const demo = buildDemoWorkerTrends(days);
-        setWorkers(demo.workers);
-        setEvents(demo.events);
-        return;
-      }
       setWorkers(data.workers);
       setEvents(data.events);
     } catch (e) {
@@ -107,9 +101,8 @@ export function WorkerTrendsPanel() {
         description: e instanceof Error ? e.message : "Unknown error",
         tone: "error",
       });
-      const demo = buildDemoWorkerTrends(days);
-      setWorkers(demo.workers);
-      setEvents(demo.events);
+      setWorkers([]);
+      setEvents([]);
     } finally {
       setLoading(false);
     }

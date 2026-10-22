@@ -2,25 +2,38 @@
 
 import { useEffect } from "react";
 
-import { hasConfiguredBackend } from "@/lib/data-backend";
+import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
+import { useAppRuntimeStore } from "@/store/app-runtime-store";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { useScoutingStore } from "@/store/scouting-store";
 
-/** MS SQL / Supabase prod: do not show persisted browser demo scouting data. */
+function clearPersistedDemoStores() {
+  useScoutingStore.setState({
+    demoRecords: [],
+    demoRounds: [],
+    demoRoutePoints: [],
+    activeRoundId: null,
+  });
+  useFieldOpsStore.setState({
+    demoHotspots: [],
+    demoSprays: [],
+    demoAlerts: [],
+  });
+}
+
+/** MS SQL / Supabase prod: hydrate mode from server + clear browser demo caches. */
 export function ProductionDataBootstrap() {
+  const hydrateFromServer = useAppRuntimeStore((s) => s.hydrateFromServer);
+
   useEffect(() => {
-    if (!hasConfiguredBackend()) return;
-    useScoutingStore.setState({
-      demoRecords: [],
-      demoRounds: [],
-      demoRoutePoints: [],
-      activeRoundId: null,
+    void hydrateFromServer().then(() => {
+      if (!isOfflineDemo()) clearPersistedDemoStores();
     });
-    useFieldOpsStore.setState({
-      demoHotspots: [],
-      demoSprays: [],
-      demoAlerts: [],
-    });
+  }, [hydrateFromServer]);
+
+  useEffect(() => {
+    if (hasConfiguredBackend()) clearPersistedDemoStores();
   }, []);
+
   return null;
 }

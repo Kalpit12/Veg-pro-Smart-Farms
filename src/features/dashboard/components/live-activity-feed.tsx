@@ -235,6 +235,12 @@ export function LiveActivityFeed({
     void refresh();
   }, [refresh, tick]);
 
+  useEffect(() => {
+    const onConfig = () => void refresh();
+    window.addEventListener("vegpro-runtime-config", onConfig);
+    return () => window.removeEventListener("vegpro-runtime-config", onConfig);
+  }, [refresh]);
+
   useRealtimeFieldFeed(refresh);
 
   const displayItems = useMemo(() => {

@@ -1,3 +1,4 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import { listScoutingRecordsSince } from "@/services/supabase/scouting-service";
 import { listHotspots } from "@/services/supabase/infestation-service";
@@ -19,21 +20,24 @@ export async function listFieldFeed(limit = 24): Promise<{
   data: FieldFeedItem[];
   error: Error | null;
 }> {
-  const supabase = createClient();
   const since = new Date();
   since.setDate(since.getDate() - 14);
+
+  const activitiesPromise = routeDataThroughMssql()
+    ? Promise.resolve({ data: [] as unknown[], error: null })
+    : createClient()
+        .from("activities")
+        .select(
+          "id, activity_type, status, created_at, notes, users:worker_id(full_name), farms(name), greenhouses(name)",
+        )
+        .order("created_at", { ascending: false })
+        .limit(limit);
 
   const [spraysRes, hotspotsRes, scoutingRes, activitiesRes] = await Promise.all([
     listSprays(limit),
     listHotspots(limit),
     listScoutingRecordsSince(since),
-    supabase
-      .from("activities")
-      .select(
-        "id, activity_type, status, created_at, notes, users:worker_id(full_name), farms(name), greenhouses(name)",
-      )
-      .order("created_at", { ascending: false })
-      .limit(limit),
+    activitiesPromise,
   ]);
 
   const firstError =

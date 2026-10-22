@@ -66,6 +66,12 @@ export function MetricsGrid({ audience = "manager" }: { audience?: "manager" | "
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const onConfig = () => void refresh();
+    window.addEventListener("vegpro-runtime-config", onConfig);
+    return () => window.removeEventListener("vegpro-runtime-config", onConfig);
+  }, [refresh]);
+
   useRealtimeHotspots(refresh);
   useRealtimePositions(refresh);
   useRealtimeScouting(refresh);
