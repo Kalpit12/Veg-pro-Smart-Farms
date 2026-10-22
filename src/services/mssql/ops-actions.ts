@@ -138,6 +138,18 @@ export async function mssqlListActivitiesAction(params: {
   return act.mssqlListActivities(params);
 }
 
+export async function mssqlSubmitActivityAction(input: {
+  worker_id: string;
+  farm_id: string;
+  greenhouse_id?: string | null;
+  activity_type: string;
+  notes?: string | null;
+  image_url?: string | null;
+  gps_location?: string | null;
+}) {
+  return act.mssqlSubmitActivity(input);
+}
+
 export async function mssqlSetActivityStatusAction(
   id: string,
   status: "approved" | "rejected",

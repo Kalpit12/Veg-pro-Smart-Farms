@@ -2,6 +2,7 @@ import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import { listScoutingRecordsSince } from "@/services/supabase/scouting-service";
 import { listHotspots } from "@/services/supabase/infestation-service";
+import { listActivities } from "@/services/supabase/activity-service";
 import { listSprays } from "@/services/supabase/spray-service";
 
 /** Unified shape for manager Live Activity Feed */
@@ -24,7 +25,7 @@ export async function listFieldFeed(limit = 24): Promise<{
   since.setDate(since.getDate() - 14);
 
   const activitiesPromise = routeDataThroughMssql()
-    ? Promise.resolve({ data: [] as unknown[], error: null })
+    ? listActivities({ limit })
     : createClient()
         .from("activities")
         .select(
@@ -40,8 +41,13 @@ export async function listFieldFeed(limit = 24): Promise<{
     activitiesPromise,
   ]);
 
+  const activitiesError =
+    activitiesRes.error &&
+    ("message" in activitiesRes.error
+      ? new Error(activitiesRes.error.message)
+      : (activitiesRes.error as Error));
   const firstError =
-    spraysRes.error ?? hotspotsRes.error ?? scoutingRes.error ?? activitiesRes.error;
+    spraysRes.error ?? hotspotsRes.error ?? scoutingRes.error ?? activitiesError;
   if (firstError) {
     return { data: [], error: firstError as Error };
   }

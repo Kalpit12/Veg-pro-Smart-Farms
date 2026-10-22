@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   mssqlListActivitiesAction,
   mssqlSetActivityStatusAction,
+  mssqlSubmitActivityAction,
 } from "@/services/mssql/ops-actions";
 
 export async function submitActivity(payload: {
@@ -15,7 +16,11 @@ export async function submitActivity(payload: {
   gps_location?: string | null;
 }) {
   if (routeDataThroughMssql()) {
-    return { data: null, error: new Error("Activity submit is not configured for MSSQL yet.") };
+    const result = await mssqlSubmitActivityAction(payload);
+    if (result.error) {
+      return { data: null, error: new Error(result.error.message) };
+    }
+    return { data: result.data, error: null };
   }
   const supabase = createClient();
   return supabase.from("activities").insert(payload);

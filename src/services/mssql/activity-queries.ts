@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
+import { isSqlGuid } from "@/lib/uuid";
 import type { ActivityLogRow, ActivityLogStatus } from "@/services/supabase/activity-log-service";
 import { formatScoutingIssueLabel, sprayActivityNotes } from "@/lib/spray-log-context";
 import type { HotspotRow } from "@/services/supabase/infestation-service";
@@ -55,6 +58,90 @@ export async function mssqlListActivities(params: {
     const msg = e instanceof Error ? e.message : String(e);
     if (/activities|Invalid object name/i.test(msg)) {
       return ok([]);
+    }
+    return fail(msg);
+  }
+}
+
+export async function mssqlSubmitActivity(input: {
+  worker_id: string;
+  farm_id: string;
+  greenhouse_id?: string | null;
+  activity_type: string;
+  notes?: string | null;
+  image_url?: string | null;
+  gps_location?: string | null;
+}) {
+  try {
+    const session = await requireServerSession();
+    if (session.id !== input.worker_id) {
+      return fail("You can only submit activities for your own account.");
+    }
+    if (session.role !== "worker" && session.role !== "supervisor") {
+      return fail("Only field workers can submit activities for approval.");
+    }
+
+    const activityType = input.activity_type.trim();
+    if (activityType.length < 3) {
+      return fail("Activity type is required.");
+    }
+    if (!isSqlGuid(input.farm_id)) {
+      return fail("Invalid farm.");
+    }
+
+    const greenhouseId =
+      input.greenhouse_id && isSqlGuid(input.greenhouse_id) ? input.greenhouse_id : null;
+
+    const pool = await getMssqlPool();
+    const id = randomUUID();
+    await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .input("worker_id", sql.UniqueIdentifier, input.worker_id)
+      .input("farm_id", sql.UniqueIdentifier, input.farm_id)
+      .input("greenhouse_id", sql.UniqueIdentifier, greenhouseId)
+      .input("activity_type", sql.NVarChar(100), activityType)
+      .input("notes", sql.NVarChar(sql.MAX), input.notes?.trim() || null)
+      .input("image_url", sql.NVarChar(1000), input.image_url ?? null)
+      .input("gps_location", sql.NVarChar(200), input.gps_location ?? null)
+      .query(`
+        INSERT INTO dbo.activities (
+          id, worker_id, farm_id, greenhouse_id, activity_type, notes, image_url, gps_location, status
+        ) VALUES (
+          @id, @worker_id, @farm_id, @greenhouse_id, @activity_type, @notes, @image_url, @gps_location, N'pending'
+        )
+      `);
+
+    const row = await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .query(`
+        SELECT a.id, a.activity_type, a.status, a.created_at, a.notes, a.image_url, a.gps_location,
+               u.full_name AS worker_name, f.name AS farm_name, g.name AS greenhouse_name
+        FROM dbo.activities a
+        INNER JOIN dbo.users u ON u.id = a.worker_id
+        LEFT JOIN dbo.farms f ON f.id = a.farm_id
+        LEFT JOIN dbo.greenhouses g ON g.id = a.greenhouse_id
+        WHERE a.id = @id
+      `);
+
+    const r = row.recordset[0];
+    return ok({
+      id: String(r.id),
+      activity_type: r.activity_type as string,
+      status: r.status as string,
+      created_at: toIso(r.created_at),
+      notes: r.notes as string | null,
+      image_url: r.image_url as string | null,
+      gps_location: r.gps_location as string | null,
+      users: r.worker_name ? { full_name: r.worker_name as string } : null,
+      farms: r.farm_name ? { name: r.farm_name as string } : null,
+      greenhouses: r.greenhouse_name ? { name: r.greenhouse_name as string } : null,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not submit activity.";
+    if (/activities|Invalid object name/i.test(msg)) {
+      return fail("Activities table is missing. Run sql/mssql/003_activities.sql on the Scouting database.");
     }
     return fail(msg);
   }
