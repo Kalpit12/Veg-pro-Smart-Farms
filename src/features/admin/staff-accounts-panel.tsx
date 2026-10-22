@@ -408,7 +408,7 @@ export function StaffAccountsPanel() {
         ) : null}
       </div>
 
-      <div className="glass-card overflow-hidden rounded-2xl">
+      <div className="glass-card rounded-2xl">
         <h3 className="border-b border-border/70 bg-muted/30 px-4 py-3 text-sm font-semibold">
           Staff directory
         </h3>

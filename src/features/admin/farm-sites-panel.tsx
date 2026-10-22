@@ -472,7 +472,7 @@ export function FarmSitesPanel() {
         </div>
       </div>
 
-      <div className="glass-card overflow-hidden rounded-2xl">
+      <div className="glass-card rounded-2xl">
         <h3 className="border-b border-border/70 bg-muted/30 px-4 py-3 text-sm font-semibold">
           Farms
         </h3>
@@ -525,7 +525,7 @@ export function FarmSitesPanel() {
         )}
       </div>
 
-      <div className="glass-card overflow-hidden rounded-2xl">
+      <div className="glass-card rounded-2xl">
         <h3 className="border-b border-border/70 bg-muted/30 px-4 py-3 text-sm font-semibold">
           Greenhouses
         </h3>

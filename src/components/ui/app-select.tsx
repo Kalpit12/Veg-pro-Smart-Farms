@@ -1,9 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-
-import { AdminSelect, type AdminSelectOption } from "@/components/ui/admin-select";
 import { cn } from "@/lib/utils";
+
+export type { AdminSelectOption } from "@/components/ui/admin-select";
+
+type AdminSelectOption = { value: string; label: string };
 
 type Props = {
   value: string;
@@ -18,7 +19,7 @@ type Props = {
   "aria-label"?: string;
 };
 
-/** Custom admin listbox on `/admin/*`; native select everywhere else. */
+/** Native select everywhere — avoids clipped custom listboxes in admin layouts. */
 export function AppSelect({
   value,
   onChange,
@@ -28,46 +29,33 @@ export function AppSelect({
   className,
   nativeClassName,
   size = "md",
-  align = "end",
   "aria-label": ariaLabel,
 }: Props) {
-  const pathname = usePathname();
-  const isAdmin = pathname?.startsWith("/admin") ?? false;
-
-  if (isAdmin) {
-    return (
-      <AdminSelect
-        value={value}
-        onChange={onChange}
-        options={options}
-        disabled={disabled}
-        placeholder={placeholder}
-        className={className}
-        size={size}
-        align={align}
-        aria-label={ariaLabel}
-      />
-    );
-  }
+  const hasEmpty = options.some((o) => o.value === "");
+  const showPlaceholder = placeholder && !hasEmpty && !value;
 
   return (
     <select
       className={cn(
-        "rounded-lg border border-border bg-background px-3 py-2 text-sm",
+        "w-full min-w-0 border border-primary/25 bg-primary/[0.04] font-medium text-foreground",
+        "hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        size === "sm" ? "rounded-lg px-2.5 py-1.5 text-sm" : "rounded-xl px-3 py-2.5 text-sm",
+        disabled && "cursor-not-allowed opacity-50",
+        className,
         nativeClassName,
       )}
-      value={value}
+      value={showPlaceholder ? "" : value}
       disabled={disabled}
       aria-label={ariaLabel}
       onChange={(e) => onChange(e.target.value)}
     >
-      {placeholder ? (
-        <option value="" disabled>
+      {placeholder && !hasEmpty ? (
+        <option value="" disabled={!!value}>
           {placeholder}
         </option>
       ) : null}
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
+        <option key={opt.value || "__empty__"} value={opt.value}>
           {opt.label}
         </option>
       ))}
