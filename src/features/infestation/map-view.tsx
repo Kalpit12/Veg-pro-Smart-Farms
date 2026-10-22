@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 
 import { hotspotIcon, sprayIcon, workerIcon } from "@/features/infestation/farm-map-markers";
 import { MapViewControls } from "@/features/infestation/map-view-controls";
+import { getRasterBasemapTileUrl, MAP_BASEMAP_ATTRIBUTION } from "@/lib/map-basemap";
 import { trailStopMarkers, type TrailPoint } from "@/lib/hotspot-trail";
 import type { HotspotRow } from "@/services/supabase/infestation-service";
 
@@ -289,8 +290,8 @@ export function MapView({
       scrollWheelZoom
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution={MAP_BASEMAP_ATTRIBUTION}
+        url={getRasterBasemapTileUrl()}
         maxNativeZoom={19}
         maxZoom={19}
       />

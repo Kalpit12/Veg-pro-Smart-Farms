@@ -5,6 +5,8 @@ import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+import { getRasterBasemapTileUrl, MAP_BASEMAP_ATTRIBUTION } from "@/lib/map-basemap";
+
 export type LivePathPoint = { lat: number; lng: number; recordedAt?: string };
 
 const startIcon = L.divIcon({
@@ -58,7 +60,7 @@ export function LiveRouteMiniMap({ path, className }: Props) {
         zoomControl={false}
         attributionControl={false}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer attribution={MAP_BASEMAP_ATTRIBUTION} url={getRasterBasemapTileUrl()} />
         <FitPath path={path} />
         {positions.length > 1 ? (
           <Polyline

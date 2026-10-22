@@ -14,6 +14,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+import { getRasterBasemapTileUrl, MAP_BASEMAP_ATTRIBUTION } from "@/lib/map-basemap";
 import type { ScoutRouteStop } from "@/lib/scout-route";
 import { greenhouseMapGridLines } from "@/lib/greenhouse-grid-georef";
 import {
@@ -280,8 +281,8 @@ function RouteMapLayers({
   return (
     <>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution={MAP_BASEMAP_ATTRIBUTION}
+        url={getRasterBasemapTileUrl()}
         maxNativeZoom={19}
         maxZoom={22}
       />
