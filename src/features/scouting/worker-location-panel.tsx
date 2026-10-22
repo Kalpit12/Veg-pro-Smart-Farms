@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { MapPin, QrCode } from "lucide-react";
+import { MapPin } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,7 @@ import {
 import { useScoutingStore } from "@/store/scouting-store";
 
 /**
- * Single “Where are you?” card for workers: status, QR scan, pick greenhouse, GPS in background.
+ * Single “Where are you?” card for workers: status, pick greenhouse, GPS in background.
  */
 export function WorkerLocationPanel() {
   const scan = useScanStore();
@@ -150,20 +149,12 @@ export function WorkerLocationPanel() {
         </div>
       ) : (
         <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-          Finding your greenhouse… Scan QR or pick one below.
+          Pick your greenhouse below to start field work.
         </p>
       )}
 
-      <Link
-        href="/worker/scan"
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground hover:opacity-95"
-      >
-        <QrCode className="size-4" />
-        Scan entrance QR
-      </Link>
-
       <div className="relative z-30 space-y-1.5 text-sm">
-        <span className="font-medium">Or pick greenhouse</span>
+        <span className="font-medium">Pick greenhouse</span>
         <GreenhousePicker
           data-testid="check-in-greenhouse"
           value={manualGh}

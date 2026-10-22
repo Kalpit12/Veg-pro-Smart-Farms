@@ -28,6 +28,8 @@ type FieldAction = {
   kind: "report" | "scout";
   title: string;
   greenhouse: string;
+  variety: string | null;
+  badgeLabel: string;
   created_at: string;
 };
 
@@ -86,6 +88,8 @@ export function WorkerDashboard() {
         kind: "report" as const,
         title: h.pest_type,
         greenhouse: h.greenhouses?.name ?? "—",
+        variety: h.greenhouses?.crop_type ?? null,
+        badgeLabel: "Pest report",
         created_at: h.created_at,
       }));
       const scouts: FieldAction[] = demoScouting.slice(0, 5).map((r) => ({
@@ -93,6 +97,8 @@ export function WorkerDashboard() {
         kind: "scout" as const,
         title: r.issue,
         greenhouse: r.greenhouseName,
+        variety: r.variety,
+        badgeLabel: "Disease",
         created_at: r.recordedAt,
       }));
       setItems(
@@ -127,13 +133,15 @@ export function WorkerDashboard() {
             id: string;
             pest_type: string;
             created_at: string;
-            greenhouses?: { name?: string } | null;
+            greenhouses?: { name?: string; crop_type?: string } | null;
           };
           return {
             id: row.id,
             kind: "report" as const,
             title: row.pest_type,
             greenhouse: row.greenhouses?.name ?? "—",
+            variety: row.greenhouses?.crop_type ?? null,
+            badgeLabel: "Pest report",
             created_at: row.created_at,
           };
         });
@@ -144,14 +152,18 @@ export function WorkerDashboard() {
           const row = r as {
             id: string;
             issue_name: string;
+            issue_type: string;
             recorded_at: string;
-            greenhouses?: { name?: string } | null;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            crop_varieties?: { name?: string } | null;
           };
           return {
             id: row.id,
             kind: "scout" as const,
             title: row.issue_name,
             greenhouse: row.greenhouses?.name ?? "—",
+            variety: row.crop_varieties?.name ?? row.greenhouses?.crop_type ?? null,
+            badgeLabel: "Disease",
             created_at: row.recorded_at,
           };
         });
@@ -250,11 +262,12 @@ export function WorkerDashboard() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <Badge variant="outline">
-                      {item.kind === "report" ? "Pest report" : "Crop check"}
-                    </Badge>
+                    <Badge variant="outline">{item.badgeLabel}</Badge>
                     <p className="mt-2 text-sm font-semibold">{item.title}</p>
-                    <p className="text-xs text-muted-foreground">{item.greenhouse}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.greenhouse}
+                      {item.variety ? ` · ${item.variety}` : ""}
+                    </p>
                   </div>
                   <p className="shrink-0 text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(item.created_at), {
