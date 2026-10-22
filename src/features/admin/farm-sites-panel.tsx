@@ -18,6 +18,7 @@ import {
 } from "@/features/admin/farm-sites-actions";
 import { SITES_CSV_HEADERS, sitesCsvTemplateContent } from "@/lib/sites-csv";
 import { hasConfiguredBackend } from "@/lib/data-backend";
+import { listCropVarieties } from "@/services/supabase/scouting-service";
 
 function downloadTextFile(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
@@ -101,6 +102,7 @@ export function FarmSitesPanel() {
   const [busy, setBusy] = useState(false);
   const [importPreview, setImportPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [varietyOptions, setVarietyOptions] = useState<{ value: string; label: string }[]>([]);
 
   const farmOptions = useMemo(
     () => farms.map((f) => ({ value: f.id, label: f.name })),
@@ -139,6 +141,28 @@ export function FarmSitesPanel() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!hasConfiguredBackend()) return;
+    void listCropVarieties().then((res) => {
+      const rows =
+        res && "data" in res && Array.isArray(res.data)
+          ? (res.data as { name: string }[])
+          : [];
+      setVarietyOptions(
+        rows.map((v) => ({ value: v.name, label: v.name })).sort((a, b) => a.label.localeCompare(b.label)),
+      );
+    });
+  }, []);
+
+  const varietySelectOptions = useMemo(() => {
+    const names = new Set(varietyOptions.map((o) => o.value));
+    const extra =
+      ghForm.crop_type && !names.has(ghForm.crop_type)
+        ? [{ value: ghForm.crop_type, label: `${ghForm.crop_type} (current)` }]
+        : [];
+    return [{ value: "", label: "Select variety…" }, ...extra, ...varietyOptions];
+  }, [varietyOptions, ghForm.crop_type]);
 
   const onSaveFarm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,12 +402,12 @@ export function FarmSitesPanel() {
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-sm font-medium">Crop type</span>
-              <input
-                className="w-full rounded-xl border border-border bg-background px-3 py-2.5"
+              <span className="text-sm font-medium">Variety</span>
+              <AppSelect
+                aria-label="Variety"
                 value={ghForm.crop_type}
-                onChange={(e) => setGhForm((g) => ({ ...g, crop_type: e.target.value }))}
-                required
+                onChange={(v) => setGhForm((g) => ({ ...g, crop_type: v }))}
+                options={varietySelectOptions}
               />
             </label>
             <label className="block space-y-1">
@@ -516,7 +540,7 @@ export function FarmSitesPanel() {
                 <tr className="border-b border-border/70 text-xs text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Farm</th>
                   <th className="px-4 py-2 font-medium">Name</th>
-                  <th className="px-4 py-2 font-medium">Crop</th>
+                  <th className="px-4 py-2 font-medium">Variety</th>
                   <th className="px-4 py-2 font-medium">GPS</th>
                   <th className="px-4 py-2 font-medium">Area sqm</th>
                   <th className="px-4 py-2 font-medium">Bays</th>

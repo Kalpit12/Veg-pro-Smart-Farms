@@ -67,7 +67,7 @@ export async function saveGreenhouseAction(input: {
   const crop_type = input.crop_type.trim();
   if (!input.farm_id) return { ok: false as const, error: "Select a farm." };
   if (name.length < 1) return { ok: false as const, error: "Enter a greenhouse name." };
-  if (!crop_type) return { ok: false as const, error: "Enter a crop type." };
+  if (!crop_type) return { ok: false as const, error: "Select a variety." };
 
   const num = (s: string) => (s.trim() ? Number(s) : null);
   const res = await upsertGreenhouse({

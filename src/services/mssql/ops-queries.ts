@@ -471,7 +471,7 @@ export async function mssqlCreateStaffAccount(input: {
   fullName: string;
   email: string;
   phone: string;
-  role: StaffAccountRole;
+  role: StaffAccountRole | "admin";
   password: string;
   greenhouseIds?: string[];
 }) {

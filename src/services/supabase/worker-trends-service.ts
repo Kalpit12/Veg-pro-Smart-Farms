@@ -1,4 +1,6 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
+import { mssqlListWorkerTrendsSinceAction } from "@/services/mssql/ops-actions";
 import {
   roundQualityFlags,
   type WorkerHistoryEvent,
@@ -12,6 +14,11 @@ export type WorkerTrendsFetchResult = {
 export async function listWorkerTrendsSince(
   since: Date,
 ): Promise<WorkerTrendsFetchResult> {
+  if (routeDataThroughMssql()) {
+    const res = await mssqlListWorkerTrendsSinceAction(since.toISOString());
+    if (res.error) throw new Error(res.error.message);
+    return res.data ?? { workers: [], events: [] };
+  }
   const supabase = createClient();
   const sinceIso = since.toISOString();
 

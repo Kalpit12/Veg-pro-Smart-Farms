@@ -1,7 +1,8 @@
 "use client";
 
 import { format, formatDistanceToNow } from "date-fns";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,12 @@ const LIVE_PHOTO_POLL_MS = 12_000;
 const LIVE_CLOCK_TICK_MS = 30_000;
 const LIVE_ROUND_POLL_MS = 15_000;
 
-function useRoundPhotos(roundId: string, status: string, refreshKey: number) {
+function useRoundPhotos(
+  roundId: string,
+  status: string,
+  refreshKey: number,
+  manualRefresh: boolean,
+) {
   const [photos, setPhotos] = useState<RoundPhoto[]>([]);
   const demoRecords = useScoutingStore((s) => s.demoRecords);
 
@@ -59,10 +65,10 @@ function useRoundPhotos(roundId: string, status: string, refreshKey: number) {
 
   useEffect(() => {
     loadPhotos();
-    if (status !== "active") return;
+    if (manualRefresh || status !== "active") return;
     const id = window.setInterval(loadPhotos, LIVE_PHOTO_POLL_MS);
     return () => window.clearInterval(id);
-  }, [loadPhotos, status, refreshKey]);
+  }, [loadPhotos, status, refreshKey, manualRefresh]);
 
   return photos;
 }
@@ -71,9 +77,11 @@ function ActiveRoundAuditRow({
   round,
   now,
   refreshKey,
+  manualRefresh,
 }: {
   now: Date;
   refreshKey: number;
+  manualRefresh: boolean;
   round: {
     id: string;
     status: string;
@@ -94,7 +102,7 @@ function ActiveRoundAuditRow({
     Math.round((round.stopCount / Math.max(1, sample.targetStops)) * 100),
   );
   const underSampled = round.stopCount < sample.targetStops;
-  const photos = useRoundPhotos(round.id, round.status, refreshKey);
+  const photos = useRoundPhotos(round.id, round.status, refreshKey, manualRefresh);
 
   return (
     <li className="space-y-2 px-3 py-3 text-sm">
@@ -153,17 +161,28 @@ function ActiveRoundAuditRow({
   );
 }
 
-export function ScoutingLiveAuditPanel() {
+export function ScoutingLiveAuditPanel({
+  manualRefresh = false,
+}: {
+  /** When true, data loads only when the user taps Refresh (farm manager scouting). */
+  manualRefresh?: boolean;
+}) {
   const { rounds, refresh } = useScoutingRounds(40);
   const active = rounds.filter((r) => r.status === "active");
   const [now, setNow] = useState(() => new Date());
   const [lastUpdated, setLastUpdated] = useState(() => new Date());
   const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const pullLive = useCallback(async () => {
-    await refresh();
-    setLastUpdated(new Date());
-    setRefreshKey((k) => k + 1);
+    setRefreshing(true);
+    try {
+      await refresh();
+      setLastUpdated(new Date());
+      setRefreshKey((k) => k + 1);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   useEffect(() => {
@@ -176,12 +195,12 @@ export function ScoutingLiveAuditPanel() {
   }, []);
 
   useEffect(() => {
-    if (!active.length) return;
+    if (manualRefresh || !active.length) return;
     const poll = window.setInterval(() => {
       void pullLive();
     }, LIVE_ROUND_POLL_MS);
     return () => window.clearInterval(poll);
-  }, [active.length, pullLive]);
+  }, [active.length, pullLive, manualRefresh]);
 
   return (
     <section className="glass-card space-y-3 rounded-2xl p-4" data-testid="live-scout-audit">
@@ -191,10 +210,12 @@ export function ScoutingLiveAuditPanel() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold">Live scout audit</h2>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-200">
-                <LivePulseDot />
-                Live
-              </span>
+              {!manualRefresh ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                  <LivePulseDot />
+                  Live
+                </span>
+              ) : null}
             </div>
             <p className="text-sm text-muted-foreground">
               Who is in a house now — stops, sample progress, and photo evidence.
@@ -209,6 +230,18 @@ export function ScoutingLiveAuditPanel() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {manualRefresh ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={refreshing}
+              onClick={() => void pullLive()}
+            >
+              <RefreshCw className={`mr-1.5 size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+          ) : null}
           <Badge variant="success" className="tabular-nums">
             {format(now, "HH:mm")}
           </Badge>
@@ -231,6 +264,7 @@ export function ScoutingLiveAuditPanel() {
               round={round}
               now={now}
               refreshKey={refreshKey}
+              manualRefresh={manualRefresh}
             />
           ))}
         </ul>

@@ -1,6 +1,7 @@
 "use server";
 
 import * as q from "@/services/mssql/ops-queries";
+import * as wd from "@/services/mssql/worker-directory-queries";
 import type { InfestationStatus } from "@/types/db";
 import type { ReportInfestationInput } from "@/services/supabase/infestation-service";
 import type { LogSprayInput } from "@/services/supabase/spray-service";
@@ -97,7 +98,7 @@ export async function mssqlCreateStaffAccountAction(input: {
   fullName: string;
   email: string;
   phone: string;
-  role: StaffAccountRole;
+  role: StaffAccountRole | "admin";
   password: string;
   greenhouseIds?: string[];
 }) {
@@ -118,4 +119,22 @@ export async function mssqlGetWeeklyTrendsRawAction() {
 
 export async function mssqlGetAdminDailyAnalyticsRawAction() {
   return q.mssqlGetAdminDailyAnalyticsRaw();
+}
+
+export async function mssqlListWorkerOpsRowsAction() {
+  return wd.mssqlListWorkerOpsRows();
+}
+
+export async function mssqlListWorkerTrendsSinceAction(sinceIso: string) {
+  return wd.mssqlListWorkerTrendsSince(new Date(sinceIso));
+}
+
+export async function mssqlUpdateStaffAccountAction(input: {
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  password?: string;
+}) {
+  return wd.mssqlUpdateStaffAccount(input);
 }

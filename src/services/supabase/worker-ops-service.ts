@@ -1,4 +1,6 @@
+import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
+import { mssqlListWorkerOpsRowsAction } from "@/services/mssql/ops-actions";
 
 export type WorkerOpsRow = {
   workerId: string;
@@ -13,6 +15,11 @@ export type WorkerOpsRow = {
 };
 
 export async function listWorkerOpsRows(): Promise<WorkerOpsRow[]> {
+  if (routeDataThroughMssql()) {
+    const res = await mssqlListWorkerOpsRowsAction();
+    if (res.error) throw new Error(res.error.message);
+    return res.data ?? [];
+  }
   const supabase = createClient();
 
   const { data: workers, error: workersError } = await supabase

@@ -22,7 +22,7 @@ export default function ManagerScoutingPage() {
 
       <ScoutingKpiDashboard />
 
-      <ScoutingLiveAuditPanel />
+      <ScoutingLiveAuditPanel manualRefresh />
 
       <SprayWorkProgramPanel />
 

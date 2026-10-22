@@ -23,6 +23,7 @@ import { getSessionAction } from "@/features/auth/sign-in-action";
 import { hasConfiguredBackend, hasMssqlEnv, hasSupabaseEnv } from "@/lib/data-backend";
 import { createClient } from "@/lib/supabase/client";
 import { listStaffAccountsAction } from "@/features/admin/list-staff-accounts-action";
+import { updateStaffAccountAction } from "@/features/admin/update-staff-account-action";
 import type { StaffAccountRow } from "@/services/supabase/staff-service";
 import type { Role } from "@/types/db";
 
@@ -67,6 +68,14 @@ export function StaffAccountsPanel() {
     ids: string[];
   } | null>(null);
   const [accessBusy, setAccessBusy] = useState(false);
+  const [profileEdit, setProfileEdit] = useState<{
+    userId: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    password: string;
+  } | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
 
   const refreshAccounts = useCallback(async () => {
     if (!hasConfiguredBackend()) {
@@ -218,6 +227,39 @@ export function StaffAccountsPanel() {
     setAccessEdit({ userId: row.id, name: row.full_name, ids: data });
   };
 
+  const openProfileEditor = (row: StaffAccountRow) => {
+    setProfileEdit({
+      userId: row.id,
+      fullName: row.full_name,
+      email: row.email,
+      phone: row.phone ?? "",
+      password: "",
+    });
+  };
+
+  const saveProfileEditor = async () => {
+    if (!profileEdit || profileBusy) return;
+    setProfileBusy(true);
+    try {
+      const result = await updateStaffAccountAction({
+        userId: profileEdit.userId,
+        fullName: profileEdit.fullName,
+        email: profileEdit.email,
+        phone: profileEdit.phone,
+        password: profileEdit.password.trim() || undefined,
+      });
+      if (!result.ok) {
+        toast({ title: "Could not save profile", description: result.error, tone: "error" });
+        return;
+      }
+      toast({ title: "Profile updated", tone: "success" });
+      setProfileEdit(null);
+      await refreshAccounts();
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
   const saveAccessEditor = async () => {
     if (!accessEdit || accessBusy) return;
     setAccessBusy(true);
@@ -302,6 +344,7 @@ export function StaffAccountsPanel() {
               options={[
                 { value: "worker", label: "Field worker" },
                 { value: "supervisor", label: "Farm manager" },
+                { value: "admin", label: "Admin" },
               ]}
             />
           </label>
@@ -386,6 +429,7 @@ export function StaffAccountsPanel() {
                   {canManageStatus ? (
                     <>
                       <th className="px-4 py-2 font-medium">Monitored sites</th>
+                      <th className="px-4 py-2 font-medium">Profile</th>
                       <th className="px-4 py-2 font-medium">Account</th>
                     </>
                   ) : null}
@@ -429,6 +473,16 @@ export function StaffAccountsPanel() {
                             )}
                           </td>
                           <td className="px-4 py-3">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openProfileEditor(row)}
+                            >
+                              Edit
+                            </Button>
+                          </td>
+                          <td className="px-4 py-3">
                             {isSelf ? (
                               <span className="text-xs text-muted-foreground">Your account</span>
                             ) : (
@@ -457,6 +511,73 @@ export function StaffAccountsPanel() {
           </div>
         )}
       </div>
+
+      {profileEdit ? (
+        <div className="glass-card space-y-3 rounded-2xl border border-primary/30 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold">Edit staff profile</h3>
+              <p className="text-xs text-muted-foreground">
+                Update name, email, phone, or set a new password (leave blank to keep current).
+              </p>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setProfileEdit(null)}>
+              Close
+            </Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">Full name</span>
+              <input
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                value={profileEdit.fullName}
+                onChange={(e) =>
+                  setProfileEdit((p) => (p ? { ...p, fullName: e.target.value } : p))
+                }
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-medium">Email</span>
+              <input
+                type="email"
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                value={profileEdit.email}
+                onChange={(e) =>
+                  setProfileEdit((p) => (p ? { ...p, email: e.target.value } : p))
+                }
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-medium">Phone</span>
+              <input
+                type="tel"
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                value={profileEdit.phone}
+                onChange={(e) =>
+                  setProfileEdit((p) => (p ? { ...p, phone: e.target.value } : p))
+                }
+              />
+            </label>
+            <label className="block space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">New password (optional)</span>
+              <input
+                type="text"
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 font-mono text-sm"
+                value={profileEdit.password}
+                onChange={(e) =>
+                  setProfileEdit((p) => (p ? { ...p, password: e.target.value } : p))
+                }
+                minLength={8}
+                placeholder="Leave blank to keep current password"
+                autoComplete="new-password"
+              />
+            </label>
+          </div>
+          <Button type="button" disabled={profileBusy} onClick={() => void saveProfileEditor()}>
+            {profileBusy ? "Saving…" : "Save profile"}
+          </Button>
+        </div>
+      ) : null}
 
       {accessEdit ? (
         <div className="glass-card space-y-3 rounded-2xl border border-primary/30 p-4">

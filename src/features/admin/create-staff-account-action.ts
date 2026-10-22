@@ -12,7 +12,7 @@ import {
 } from "@/services/supervisor-access-service";
 import type { Role } from "@/types/db";
 
-export type StaffAccountRole = Extract<Role, "worker" | "supervisor">;
+export type StaffAccountRole = Extract<Role, "worker" | "supervisor" | "admin">;
 
 export type CreateStaffAccountInput = {
   fullName: string;
@@ -77,8 +77,8 @@ export async function createStaffAccountAction(
   if (password.length < 8) {
     return { ok: false, error: "Password must be at least 8 characters." };
   }
-  if (role !== "worker" && role !== "supervisor") {
-    return { ok: false, error: "Role must be field worker or farm manager." };
+  if (role !== "worker" && role !== "supervisor" && role !== "admin") {
+    return { ok: false, error: "Role must be field worker, farm manager, or admin." };
   }
 
   const greenhouseIds =
