@@ -1,6 +1,12 @@
 import { randomUUID } from "crypto";
 
-import { SCOUTING_PARAMETERS } from "@/lib/bemack-master-data";
+import {
+  BEMACK_CATEGORIES,
+  SCOUTING_PARAMETERS,
+  varietyForBay,
+} from "@/lib/bemack-master-data";
+import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
+import { isNoIssueMarker, pestCountToSeverity } from "@/lib/plant-zones";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
 import { requireServerSession, type ServerSession } from "@/lib/mssql/session-server";
@@ -654,6 +660,79 @@ export async function mssqlFinalizeRoundMetrics(
     .input("id", sql.UniqueIdentifier, roundId)
     .query(`SELECT * FROM dbo.scouting_rounds WHERE id = @id`);
   return ok(mapRoundRow(updated.recordset[0]));
+}
+
+function ratingForFieldLine(mirror: FieldScoutingMirrorInput): number | null {
+  const line = mirror.line;
+  if (line.kind === "pest") {
+    const sev = pestCountToSeverity(line.count);
+    return Math.min(5, Math.max(1, sev + 1));
+  }
+  return Math.min(5, Math.max(1, line.severity * 2));
+}
+
+/** Best-effort mirror of one field report line into scouting_records (same SQL connection). */
+export async function mssqlMirrorFieldLineToScouting(
+  scoutId: string,
+  farmId: string,
+  greenhouseId: string,
+  mirror: FieldScoutingMirrorInput,
+) {
+  if (isNoIssueMarker(mirror.line.name)) return;
+
+  const [cats, varieties, parameters] = await Promise.all([
+    mssqlListCropCategories(),
+    mssqlListCropVarieties(),
+    mssqlListScoutingParameters(),
+  ]);
+  if (cats.error || varieties.error || parameters.error) return;
+
+  const categoryName = BEMACK_CATEGORIES[0];
+  const catRow = cats.data?.find((c) => c.name === categoryName);
+  const varietyName = varietyForBay(mirror.greenhouseName, mirror.bay);
+  const varRow = varieties.data?.find(
+    (v) => v.name === varietyName && v.category_id === catRow?.id,
+  );
+  if (!catRow || !varRow) return;
+
+  const paramRows = parameters.data ?? [];
+  const def = SCOUTING_PARAMETERS.find((p) => p.name === mirror.line.name);
+  const paramRow = def ? paramRows.find((r) => r.param_key === def.id) : undefined;
+  const observations = paramRow
+    ? [
+        {
+          parameter_id: paramRow.id,
+          present: true,
+          rating: ratingForFieldLine(mirror),
+        },
+      ]
+    : [];
+
+  const noteParts = [
+    `Zone: ${mirror.zoneLabel}`,
+    mirror.notes?.trim() ? mirror.notes.trim() : null,
+  ].filter(Boolean);
+
+  await mssqlCreateScoutingRecord({
+    scout_id: scoutId,
+    farm_id: farmId,
+    greenhouse_id: greenhouseId,
+    category_id: catRow.id,
+    variety_id: varRow.id,
+    beds: 11,
+    column_no: mirror.column,
+    bay_no: mirror.bay,
+    issue_type: mirror.line.kind,
+    issue_name: mirror.line.name,
+    rating: ratingForFieldLine(mirror),
+    round_id: mirror.roundId,
+    latitude: mirror.latitude,
+    longitude: mirror.longitude,
+    notes: noteParts.length ? noteParts.join(" · ") : null,
+    recorded_at: mirror.recordedAt ?? new Date().toISOString(),
+    image_url: null,
+    observations,
+  });
 }
 
 export async function mssqlListGreenhouseAnchors() {

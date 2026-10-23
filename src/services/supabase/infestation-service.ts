@@ -1,3 +1,4 @@
+import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
 import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import type { InfestationHotspot, InfestationStatus } from "@/types/db";
@@ -15,8 +16,13 @@ export type ReportInfestationInput = {
   severity: number;
 };
 
-export async function reportInfestation(input: ReportInfestationInput) {
-  if (routeDataThroughMssql()) return mssql.mssqlReportInfestationAction(input);
+export async function reportInfestation(
+  input: ReportInfestationInput,
+  scoutingMirror?: FieldScoutingMirrorInput,
+) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlReportInfestationAction(input, scoutingMirror);
+  }
   const supabase = createClient();
   return supabase.from("infestation_hotspots").insert(input).select().single();
 }

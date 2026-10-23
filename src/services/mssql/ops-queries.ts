@@ -7,7 +7,9 @@ import { requireServerSession } from "@/lib/mssql/session-server";
 import { insertSupervisorGreenhouseAccessMssql } from "@/services/supervisor-access-service";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
 import type { InfestationStatus } from "@/types/db";
+import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
 import type { ReportInfestationInput } from "@/services/supabase/infestation-service";
+import { mssqlMirrorFieldLineToScouting } from "@/services/mssql/scouting-queries";
 import type { LogSprayInput } from "@/services/supabase/spray-service";
 import type { StaffAccountRole } from "@/features/admin/create-staff-account-action";
 
@@ -47,23 +49,31 @@ function mapHotspot(r: Record<string, unknown>) {
   };
 }
 
-export async function mssqlReportInfestation(input: ReportInfestationInput) {
-  await requireServerSession();
-  const pool = await getMssqlPool();
-  const id = randomUUID();
-  await pool
-    .request()
-    .input("id", sql.UniqueIdentifier, id)
-    .input("farm_id", sql.UniqueIdentifier, input.farm_id)
-    .input("greenhouse_id", sql.UniqueIdentifier, input.greenhouse_id)
-    .input("reported_by", sql.UniqueIdentifier, input.reported_by)
-    .input("latitude", sql.Float, input.latitude)
-    .input("longitude", sql.Float, input.longitude)
-    .input("pest_type", sql.NVarChar(100), input.pest_type)
-    .input("problem", sql.NVarChar(500), input.problem)
-    .input("main_issue", sql.NVarChar(200), input.main_issue)
-    .input("severity", sql.SmallInt, input.severity)
-    .query(`
+export async function mssqlReportInfestation(
+  input: ReportInfestationInput,
+  scoutingMirror?: FieldScoutingMirrorInput,
+) {
+  try {
+    await requireServerSession();
+    const pool = await getMssqlPool();
+    const id = randomUUID();
+    const insert = pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .input("farm_id", sql.UniqueIdentifier, input.farm_id)
+      .input("reported_by", sql.UniqueIdentifier, input.reported_by)
+      .input("latitude", sql.Float, input.latitude)
+      .input("longitude", sql.Float, input.longitude)
+      .input("pest_type", sql.NVarChar(100), input.pest_type)
+      .input("problem", sql.NVarChar(500), input.problem)
+      .input("main_issue", sql.NVarChar(200), input.main_issue)
+      .input("severity", sql.SmallInt, input.severity);
+    if (input.greenhouse_id) {
+      insert.input("greenhouse_id", sql.UniqueIdentifier, input.greenhouse_id);
+    } else {
+      insert.input("greenhouse_id", sql.UniqueIdentifier, null);
+    }
+    await insert.query(`
       INSERT INTO dbo.infestation_hotspots (
         id, farm_id, greenhouse_id, reported_by, latitude, longitude,
         pest_type, problem, main_issue, severity, status
@@ -72,11 +82,32 @@ export async function mssqlReportInfestation(input: ReportInfestationInput) {
         @pest_type, @problem, @main_issue, @severity, 'active'
       )
     `);
-  const row = await pool
-    .request()
-    .input("id", sql.UniqueIdentifier, id)
-    .query(`${hotspotSelectJoin()} WHERE h.id = @id`);
-  return ok(mapHotspot(row.recordset[0]));
+    const row = await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .query(`${hotspotSelectJoin()} WHERE h.id = @id`);
+    const raw = row.recordset[0];
+    if (!raw) {
+      return fail("Report was saved but could not be loaded.");
+    }
+
+    if (scoutingMirror && input.greenhouse_id) {
+      try {
+        await mssqlMirrorFieldLineToScouting(
+          input.reported_by,
+          input.farm_id,
+          input.greenhouse_id,
+          scoutingMirror,
+        );
+      } catch {
+        /* Hotspot is canonical; scouting mirror is best-effort for KPI tables. */
+      }
+    }
+
+    return ok(mapHotspot(raw));
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Could not save report.");
+  }
 }
 
 async function listHotspotsQuery(where: string, params: Record<string, unknown>, limit: number) {

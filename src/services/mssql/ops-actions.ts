@@ -4,12 +4,16 @@ import * as q from "@/services/mssql/ops-queries";
 import * as wd from "@/services/mssql/worker-directory-queries";
 import * as act from "@/services/mssql/activity-queries";
 import type { InfestationStatus } from "@/types/db";
+import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
 import type { ReportInfestationInput } from "@/services/supabase/infestation-service";
 import type { LogSprayInput } from "@/services/supabase/spray-service";
 import type { StaffAccountRole } from "@/features/admin/create-staff-account-action";
 
-export async function mssqlReportInfestationAction(input: ReportInfestationInput) {
-  return q.mssqlReportInfestation(input);
+export async function mssqlReportInfestationAction(
+  input: ReportInfestationInput,
+  scoutingMirror?: FieldScoutingMirrorInput,
+) {
+  return q.mssqlReportInfestation(input, scoutingMirror);
 }
 
 export async function mssqlListHotspotsAction(limit?: number) {

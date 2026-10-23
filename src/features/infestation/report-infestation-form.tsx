@@ -41,7 +41,7 @@ import { useFieldOpsStore } from "@/store/field-ops-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
 import { useScanStore } from "@/store/scan-store";
-import { syncScoutingRecordsFromFieldReport } from "@/lib/field-report-scouting-sync";
+import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
 import { getCurrentUser } from "@/services/supabase/auth-service";
 import { reportInfestation } from "@/services/supabase/infestation-service";
 import { uploadActivityEvidence } from "@/services/supabase/storage-service";
@@ -442,48 +442,41 @@ export function ReportInfestationForm({
             severity: detail.severityForDb,
           };
 
+          let scoutingMirror: FieldScoutingMirrorInput | undefined;
+          if (mapCell && scan.greenhouseId && scan.greenhouseName) {
+            scoutingMirror = {
+              column: mapCell.column,
+              bay: mapCell.bay,
+              greenhouseName: scan.greenhouseName,
+              line,
+              zoneLabel: zoneConfig.label,
+              notes: values.notes?.trim() || null,
+              roundId: session?.roundId ?? null,
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+            };
+          }
+
           if (offline) {
             enqueueInfestation(payload);
             queuedAny = true;
             continue;
           }
 
-          const { error } = await reportInfestation(payload);
+          const { error } = await reportInfestation(payload, scoutingMirror);
           if (error) {
             if (isLikelyOfflineError(error)) {
               enqueueInfestation(payload);
               queuedAny = true;
               continue;
             }
-            throw error;
+            throw new Error(
+              typeof error === "object" && error && "message" in error
+                ? String((error as { message: string }).message)
+                : "Could not save report.",
+            );
           }
-        }
-
-        let scoutSyncNote: string | null = null;
-        if (
-          !queuedAny &&
-          mapCell &&
-          scan.greenhouseId &&
-          scan.greenhouseName
-        ) {
-          const roundId = session?.roundId ?? null;
-          const { saved, error: scoutSyncError } = await syncScoutingRecordsFromFieldReport({
-            scoutId: user.id,
-            farmId: scan.farmId!,
-            greenhouseId: scan.greenhouseId,
-            greenhouseName: scan.greenhouseName,
-            mapCell,
-            lines,
-            zoneLabel: zoneConfig.label,
-            notes: values.notes?.trim() || null,
-            roundId,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-          });
-          if (scoutSyncError) {
-            scoutSyncNote =
-              "Hotspot saved; scouting KPI row did not sync (check crop varieties in SQL).";
-          } else if (saved > 0) {
+          if (scoutingMirror) {
             incrementStopCount();
           }
         }
@@ -498,7 +491,7 @@ export function ReportInfestationForm({
               : `${lines.length} reports saved`,
           description: queuedAny
             ? "No signal — reports will upload when you reconnect."
-            : scoutSyncNote ?? "Farm manager will see this to log a spray response.",
+            : "Farm manager will see this to log a spray response.",
           tone: queuedAny ? "default" : "success",
         });
         resetAfterSuccess();
