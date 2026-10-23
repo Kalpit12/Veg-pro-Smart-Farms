@@ -39,16 +39,104 @@ async function ensureScoutingParametersSeeded(pool: Awaited<ReturnType<typeof ge
   }
 }
 
+type SqlExecutor = Awaited<ReturnType<typeof getMssqlPool>> | sql.Transaction;
+
+function sqlRequest(exec: SqlExecutor) {
+  return exec instanceof sql.Transaction ? new sql.Request(exec) : exec.request();
+}
+
 async function resolveRoundIdForInsert(
-  pool: Awaited<ReturnType<typeof getMssqlPool>>,
+  exec: SqlExecutor,
   roundId: string | null | undefined,
 ) {
   if (!roundId || !isUuid(roundId)) return null;
-  const check = await pool
-    .request()
+  const check = await sqlRequest(exec)
     .input("id", sql.UniqueIdentifier, roundId)
     .query(`SELECT 1 AS ok FROM dbo.scouting_rounds WHERE id = @id`);
   return check.recordset.length ? roundId : null;
+}
+
+async function ensureCropCatalogSeeded(pool: Awaited<ReturnType<typeof getMssqlPool>>) {
+  const counts = await pool.request().query(`
+    SELECT
+      (SELECT COUNT(*) FROM dbo.crop_categories) AS categories,
+      (SELECT COUNT(*) FROM dbo.crop_varieties) AS varieties
+  `);
+  const row = counts.recordset[0] as { categories: number; varieties: number };
+  if (row.categories > 0 && row.varieties > 0) return;
+
+  const catId = "ccccccc1-1111-1111-1111-111111111111";
+  await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, catId)
+    .input("name", sql.NVarChar(200), BEMACK_CATEGORIES[0])
+    .query(`
+      IF NOT EXISTS (SELECT 1 FROM dbo.crop_categories WHERE id = @id)
+        INSERT INTO dbo.crop_categories (id, name) VALUES (@id, @name);
+    `);
+
+  const fallbackVarieties = ["Madam Red", "Athena", "Red Calypso", "ANNAKARINA"];
+  for (const name of fallbackVarieties) {
+    await pool
+      .request()
+      .input("cat", sql.UniqueIdentifier, catId)
+      .input("name", sql.NVarChar(200), name)
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM dbo.crop_varieties WHERE category_id = @cat AND name = @name)
+          INSERT INTO dbo.crop_varieties (id, category_id, name) VALUES (NEWID(), @cat, @name);
+      `);
+  }
+}
+
+async function resolveCatalogForGreenhouse(
+  pool: Awaited<ReturnType<typeof getMssqlPool>>,
+  greenhouseId: string,
+  greenhouseName: string,
+  bayNo: number,
+) {
+  await ensureCropCatalogSeeded(pool);
+  const preferred = varietyForBay(greenhouseName, bayNo);
+  const pick = async (name: string) => {
+    const result = await pool
+      .request()
+      .input("name", sql.NVarChar(200), name)
+      .query(`
+        SELECT TOP 1 v.id AS variety_id, v.category_id
+        FROM dbo.crop_varieties v
+        WHERE v.name = @name
+      `);
+    const hit = result.recordset[0];
+    if (!hit) return null;
+    return {
+      varietyId: String(hit.variety_id),
+      categoryId: String(hit.category_id),
+    };
+  };
+
+  let ids = await pick(preferred);
+  if (ids) return ids;
+
+  const gh = await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, greenhouseId)
+    .query(`SELECT crop_type FROM dbo.greenhouses WHERE id = @id`);
+  const cropType = gh.recordset[0]?.crop_type as string | undefined;
+  if (cropType?.trim()) {
+    ids = await pick(cropType.trim());
+    if (ids) return ids;
+  }
+
+  const any = await pool.request().query(`
+    SELECT TOP 1 v.id AS variety_id, v.category_id
+    FROM dbo.crop_varieties v
+    ORDER BY v.name
+  `);
+  const fallback = any.recordset[0];
+  if (!fallback) return null;
+  return {
+    varietyId: String(fallback.variety_id),
+    categoryId: String(fallback.category_id),
+  };
 }
 
 async function scoutingRecordsScopeClause(session: ServerSession, alias = "r") {
@@ -120,25 +208,33 @@ export async function mssqlListScoutingParameters() {
   return ok(data);
 }
 
-export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput) {
-  const session = await requireServerSession();
+async function insertScoutingRecordRow(
+  input: CreateScoutingRecordInput,
+  options?: { exec?: SqlExecutor; session?: ServerSession },
+) {
+  const session = options?.session ?? (await requireServerSession());
   if (input.scout_id !== session.id && session.role === "worker") {
     return fail("Workers can only save their own scouting stops.");
   }
 
-  const pool = await getMssqlPool();
-  await ensureScoutingParametersSeeded(pool);
+  const pool = options?.exec ?? (await getMssqlPool());
+  await ensureScoutingParametersSeeded(
+    pool instanceof sql.Transaction ? await getMssqlPool() : pool,
+  );
   const recordId = randomUUID();
   const recordedAt = input.recorded_at ?? new Date().toISOString();
   const roundId = await resolveRoundIdForInsert(pool, input.round_id);
-  const tx = new sql.Transaction(pool);
-  await tx.begin();
+
+  const ownTx = pool instanceof sql.Transaction ? null : new sql.Transaction(pool);
+  const exec = ownTx ?? pool;
+  if (ownTx) await ownTx.begin();
+
   try {
     const validParamIds = new Set<string>();
     if (input.observations.length) {
       const ids = input.observations.map((o) => o.parameter_id).filter(isUuid);
       if (ids.length) {
-        const req = new sql.Request(tx);
+        const req = sqlRequest(exec);
         ids.forEach((id, i) => req.input(`p${i}`, sql.UniqueIdentifier, id));
         const inList = ids.map((_, i) => `@p${i}`).join(",");
         const found = await req.query(
@@ -150,32 +246,36 @@ export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput
       }
     }
 
-    await new sql.Request(tx)
+    const insertReq = sqlRequest(exec)
       .input("id", sql.UniqueIdentifier, recordId)
       .input("scout_id", sql.UniqueIdentifier, input.scout_id)
       .input("farm_id", sql.UniqueIdentifier, input.farm_id)
       .input("greenhouse_id", sql.UniqueIdentifier, input.greenhouse_id)
       .input("category_id", sql.UniqueIdentifier, input.category_id)
       .input("variety_id", sql.UniqueIdentifier, input.variety_id)
-      .input("round_id", sql.UniqueIdentifier, roundId)
       .input("beds", sql.SmallInt, input.beds)
       .input("column_no", sql.SmallInt, input.column_no)
       .input("bay_no", sql.SmallInt, input.bay_no)
       .input("issue_type", sql.NVarChar(20), input.issue_type)
       .input("issue_name", sql.NVarChar(200), input.issue_name)
-      .input("rating", sql.SmallInt, input.rating)
+      .input("rating", sql.SmallInt, input.rating ?? null)
       .input("latitude", sql.Float, input.latitude ?? null)
       .input("longitude", sql.Float, input.longitude ?? null)
       .input("notes", sql.NVarChar(sql.MAX), input.notes ?? null)
       .input("image_url", sql.NVarChar(1000), input.image_url ?? null)
-      .input("recorded_at", sql.DateTime2, new Date(recordedAt))
-      .query(`
+      .input("recorded_at", sql.DateTime2, new Date(recordedAt));
+
+    if (roundId) {
+      insertReq.input("round_id", sql.UniqueIdentifier, roundId);
+    }
+    await insertReq.query(`
         INSERT INTO dbo.scouting_records (
           id, scout_id, farm_id, greenhouse_id, category_id, variety_id, round_id,
           beds, column_no, bay_no, issue_type, issue_name, rating,
           latitude, longitude, notes, image_url, recorded_at
         ) VALUES (
-          @id, @scout_id, @farm_id, @greenhouse_id, @category_id, @variety_id, @round_id,
+          @id, @scout_id, @farm_id, @greenhouse_id, @category_id, @variety_id,
+          ${roundId ? "@round_id" : "NULL"},
           @beds, @column_no, @bay_no, @issue_type, @issue_name, @rating,
           @latitude, @longitude, @notes, @image_url, @recorded_at
         )
@@ -183,29 +283,41 @@ export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput
 
     for (const o of input.observations) {
       if (!validParamIds.has(o.parameter_id)) continue;
-      await new sql.Request(tx)
+      await sqlRequest(exec)
         .input("id", sql.UniqueIdentifier, randomUUID())
         .input("record_id", sql.UniqueIdentifier, recordId)
         .input("parameter_id", sql.UniqueIdentifier, o.parameter_id)
         .input("present", sql.Bit, o.present ? 1 : 0)
-        .input("rating", sql.SmallInt, o.rating)
+        .input("rating", sql.SmallInt, o.rating ?? null)
         .query(`
           INSERT INTO dbo.scouting_observations (id, record_id, parameter_id, present, rating)
           VALUES (@id, @record_id, @parameter_id, @present, @rating)
         `);
     }
 
-    await tx.commit();
+    if (ownTx) await ownTx.commit();
+    return { recordId, pool: pool instanceof sql.Transaction ? await getMssqlPool() : pool };
   } catch (e) {
-    await tx.rollback();
+    if (ownTx) await ownTx.rollback();
     return fail(e instanceof Error ? e.message : "Insert failed");
   }
+}
 
-  const row = await pool
+export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput) {
+  const inserted = await insertScoutingRecordRow(input);
+  if ("error" in inserted && inserted.error) {
+    return inserted as ReturnType<typeof fail>;
+  }
+  if (!("recordId" in inserted)) {
+    return fail("Insert failed");
+  }
+
+  const row = await inserted.pool
     .request()
-    .input("id", sql.UniqueIdentifier, recordId)
+    .input("id", sql.UniqueIdentifier, inserted.recordId)
     .query(`SELECT * FROM dbo.scouting_records WHERE id = @id`);
   const r = row.recordset[0];
+  if (!r) return fail("Scouting stop saved but could not be loaded.");
   const data: ScoutingRecord = {
     id: String(r.id),
     scout_id: String(r.scout_id),
@@ -671,40 +783,40 @@ function ratingForFieldLine(mirror: FieldScoutingMirrorInput): number | null {
   return Math.min(5, Math.max(1, line.severity * 2));
 }
 
-/** Best-effort mirror of one field report line into scouting_records (same SQL connection). */
+/** Mirror one field report line into scouting_records (+ observations). */
 export async function mssqlMirrorFieldLineToScouting(
   scoutId: string,
   farmId: string,
   greenhouseId: string,
   mirror: FieldScoutingMirrorInput,
+  options?: { session?: ServerSession; exec?: SqlExecutor },
 ) {
-  if (isNoIssueMarker(mirror.line.name)) return;
+  if (isNoIssueMarker(mirror.line.name)) return ok(null);
 
-  const [cats, varieties, parameters] = await Promise.all([
-    mssqlListCropCategories(),
-    mssqlListCropVarieties(),
-    mssqlListScoutingParameters(),
-  ]);
-  if (cats.error || varieties.error || parameters.error) return;
-
-  const varietyName = varietyForBay(mirror.greenhouseName, mirror.bay);
-  let varRow = varieties.data?.find((v) => v.name === varietyName);
-  if (!varRow) {
-    varRow = varieties.data?.find(
-      (v) =>
-        v.name.localeCompare(varietyName, undefined, { sensitivity: "accent" }) === 0,
+  const pool =
+    options?.exec instanceof sql.Transaction
+      ? await getMssqlPool()
+      : options?.exec ?? (await getMssqlPool());
+  const catalog = await resolveCatalogForGreenhouse(
+    pool,
+    greenhouseId,
+    mirror.greenhouseName,
+    mirror.bay,
+  );
+  if (!catalog) {
+    return fail(
+      "Could not resolve crop variety for scouting record. Run sql/mssql/005_seed_star_greenhouses.sql or 002_seed_bemack_core.sql.",
     );
   }
-  if (!varRow && varieties.data?.length) {
-    varRow = varieties.data[0];
-  }
-  const categoryName = BEMACK_CATEGORIES[0];
-  const catRow =
-    cats.data?.find((c) => c.name === categoryName) ??
-    (varRow ? cats.data?.find((c) => c.id === varRow!.category_id) : undefined);
-  if (!catRow || !varRow) return;
 
-  const paramRows = parameters.data ?? [];
+  await ensureScoutingParametersSeeded(pool);
+  const paramResult = await pool.request().query(
+    `SELECT id, param_key FROM dbo.scouting_parameters ORDER BY sort_order`,
+  );
+  const paramRows = paramResult.recordset.map((r) => ({
+    id: String(r.id),
+    param_key: r.param_key as string,
+  }));
   const def = SCOUTING_PARAMETERS.find((p) => p.name === mirror.line.name);
   const paramRow = def ? paramRows.find((r) => r.param_key === def.id) : undefined;
   const observations = paramRow
@@ -722,26 +834,35 @@ export async function mssqlMirrorFieldLineToScouting(
     mirror.notes?.trim() ? mirror.notes.trim() : null,
   ].filter(Boolean);
 
-  await mssqlCreateScoutingRecord({
-    scout_id: scoutId,
-    farm_id: farmId,
-    greenhouse_id: greenhouseId,
-    category_id: catRow.id,
-    variety_id: varRow.id,
-    beds: 11,
-    column_no: mirror.column,
-    bay_no: mirror.bay,
-    issue_type: mirror.line.kind,
-    issue_name: mirror.line.name,
-    rating: ratingForFieldLine(mirror),
-    round_id: mirror.roundId,
-    latitude: mirror.latitude,
-    longitude: mirror.longitude,
-    notes: noteParts.length ? noteParts.join(" · ") : null,
-    recorded_at: mirror.recordedAt ?? new Date().toISOString(),
-    image_url: null,
-    observations,
-  });
+  const session = options?.session ?? (await requireServerSession());
+  const inserted = await insertScoutingRecordRow(
+    {
+      scout_id: scoutId,
+      farm_id: farmId,
+      greenhouse_id: greenhouseId,
+      category_id: catalog.categoryId,
+      variety_id: catalog.varietyId,
+      beds: 11,
+      column_no: mirror.column,
+      bay_no: mirror.bay,
+      issue_type: mirror.line.kind,
+      issue_name: mirror.line.name,
+      rating: ratingForFieldLine(mirror),
+      round_id: mirror.roundId,
+      latitude: mirror.latitude,
+      longitude: mirror.longitude,
+      notes: noteParts.length ? noteParts.join(" · ") : null,
+      recorded_at: mirror.recordedAt ?? new Date().toISOString(),
+      image_url: null,
+      observations,
+    },
+    { exec: options?.exec, session },
+  );
+
+  if ("error" in inserted && inserted.error) {
+    return inserted as ReturnType<typeof fail>;
+  }
+  return ok(null);
 }
 
 export async function mssqlListGreenhouseAnchors() {

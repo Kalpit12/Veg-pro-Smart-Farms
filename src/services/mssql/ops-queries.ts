@@ -128,15 +128,18 @@ export async function mssqlReportInfestation(
     }
 
     if (scoutingMirror && input.greenhouse_id) {
-      try {
-        await mssqlMirrorFieldLineToScouting(
-          input.reported_by,
-          input.farm_id,
-          input.greenhouse_id,
-          scoutingMirror,
+      const session = await requireServerSession();
+      const mirrored = await mssqlMirrorFieldLineToScouting(
+        input.reported_by,
+        input.farm_id,
+        input.greenhouse_id,
+        scoutingMirror,
+        { session },
+      );
+      if (mirrored.error) {
+        return fail(
+          `Report saved to hotspots but scouting row failed: ${mirrored.error.message}`,
         );
-      } catch {
-        /* Hotspot is canonical; scouting mirror is best-effort for KPI tables. */
       }
     }
 
