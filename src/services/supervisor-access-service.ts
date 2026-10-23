@@ -52,7 +52,8 @@ export async function listFarmsGreenhousesCatalog(): Promise<{
       await assertAdminMssql();
       const pool = await getMssqlPool();
       const result = await pool.request().query(`
-        SELECT f.id AS farm_id, f.name AS farm_name, g.id AS greenhouse_id, g.name AS greenhouse_name
+        SELECT f.id AS farm_id, f.name AS farm_name, g.id AS greenhouse_id, g.name AS greenhouse_name,
+               g.crop_type AS greenhouse_crop_type
         FROM dbo.farms f
         INNER JOIN dbo.greenhouses g ON g.farm_id = f.id
         ORDER BY f.name, g.name
@@ -72,7 +73,7 @@ export async function listFarmsGreenhousesCatalog(): Promise<{
         farm.greenhouses.push({
           id: String(row.greenhouse_id),
           name: row.greenhouse_name as string,
-          cropType: (row as { greenhouse_crop_type?: string }).greenhouse_crop_type ?? null,
+          cropType: (row.greenhouse_crop_type as string | null | undefined) ?? null,
         });
       }
       return { data: [...byFarm.values()], error: null };
@@ -82,15 +83,25 @@ export async function listFarmsGreenhousesCatalog(): Promise<{
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("farms")
-      .select("id, name, greenhouses(id, name)")
+      .select("id, name, greenhouses(id, name, crop_type)")
       .order("name");
     if (error) return { data: [], error: { message: error.message } };
     const catalog: FarmGreenhouseCatalogItem[] = (data ?? []).map((farm) => ({
       farmId: farm.id as string,
       farmName: farm.name as string,
-      greenhouses: ((farm.greenhouses ?? []) as { id: string; name: string }[]).sort((a, b) =>
-        a.name.localeCompare(b.name),
-      ),
+      greenhouses: (
+        (farm.greenhouses ?? []) as {
+          id: string;
+          name: string;
+          crop_type?: string | null;
+        }[]
+      )
+        .map((g) => ({
+          id: g.id,
+          name: g.name,
+          cropType: g.crop_type ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     }));
     return { data: catalog, error: null };
   } catch (e) {

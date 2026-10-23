@@ -37,6 +37,10 @@ import {
 } from "@/lib/greenhouse-condition";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { ALL } from "@/lib/manager-dashboard-filters";
+import {
+  STAR_GREENHOUSE_ROWS,
+  STAR_VARIETY_ORDER,
+} from "@/lib/star-greenhouse-rows";
 import type { FarmGreenhouseCatalogItem } from "@/services/supervisor-access-service";
 import { listHotspotsForHistory } from "@/services/supabase/infestation-service";
 import { listSpraysForHistory } from "@/services/supabase/spray-service";
@@ -151,6 +155,12 @@ function varietiesForCatalog(
   for (const g of pool) {
     const v = g.cropType?.trim();
     if (v) set.add(v);
+    const starRow = STAR_GREENHOUSE_ROWS.find(
+      (row) => row.id === g.id || row.name === g.name,
+    );
+    if (starRow) {
+      for (const variety of starRow.varieties) set.add(variety);
+    }
   }
   return [...set].sort((a, b) => a.localeCompare(b));
 }
@@ -457,16 +467,21 @@ export function HistoryList({ scope = "admin", fullReportRef }: Props) {
     [sites, farmId, variety],
   );
 
-  const varietyOptions = useMemo(
-    () => [
+  const varietyOptions = useMemo(() => {
+    const set = new Set(varietiesForCatalog(sites, farmId, greenhouseId));
+    for (const v of STAR_VARIETY_ORDER) set.add(v);
+    for (const item of scopeFilteredItems) {
+      const v = item.variety?.trim();
+      if (v && v !== "—") set.add(v);
+    }
+    return [
       { value: ALL, label: "All varieties" },
-      ...varietiesForCatalog(sites, farmId, greenhouseId).map((v) => ({
+      ...[...set].sort((a, b) => a.localeCompare(b)).map((v) => ({
         value: v,
         label: v,
       })),
-    ],
-    [sites, farmId, greenhouseId],
-  );
+    ];
+  }, [sites, farmId, greenhouseId, scopeFilteredItems]);
 
   const groupedForFullReport = useMemo(() => {
     const byGh = new Map<string, HistoryItem[]>();
