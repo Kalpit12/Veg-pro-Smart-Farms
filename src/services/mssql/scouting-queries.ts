@@ -39,18 +39,13 @@ async function ensureScoutingParametersSeeded(pool: Awaited<ReturnType<typeof ge
   }
 }
 
-type SqlExecutor = Awaited<ReturnType<typeof getMssqlPool>> | sql.Transaction;
-
-function sqlRequest(exec: SqlExecutor) {
-  return exec instanceof sql.Transaction ? new sql.Request(exec) : exec.request();
-}
-
 async function resolveRoundIdForInsert(
-  exec: SqlExecutor,
+  pool: Awaited<ReturnType<typeof getMssqlPool>>,
   roundId: string | null | undefined,
 ) {
   if (!roundId || !isUuid(roundId)) return null;
-  const check = await sqlRequest(exec)
+  const check = await pool
+    .request()
     .input("id", sql.UniqueIdentifier, roundId)
     .query(`SELECT 1 AS ok FROM dbo.scouting_rounds WHERE id = @id`);
   return check.recordset.length ? roundId : null;
@@ -210,31 +205,25 @@ export async function mssqlListScoutingParameters() {
 
 async function insertScoutingRecordRow(
   input: CreateScoutingRecordInput,
-  options?: { exec?: SqlExecutor; session?: ServerSession },
+  options?: { session?: ServerSession },
 ) {
   const session = options?.session ?? (await requireServerSession());
   if (input.scout_id !== session.id && session.role === "worker") {
     return fail("Workers can only save their own scouting stops.");
   }
 
-  const pool = options?.exec ?? (await getMssqlPool());
-  await ensureScoutingParametersSeeded(
-    pool instanceof sql.Transaction ? await getMssqlPool() : pool,
-  );
+  const pool = await getMssqlPool();
+  await ensureScoutingParametersSeeded(pool);
   const recordId = randomUUID();
   const recordedAt = input.recorded_at ?? new Date().toISOString();
   const roundId = await resolveRoundIdForInsert(pool, input.round_id);
-
-  const ownTx = pool instanceof sql.Transaction ? null : new sql.Transaction(pool);
-  const exec = ownTx ?? pool;
-  if (ownTx) await ownTx.begin();
 
   try {
     const validParamIds = new Set<string>();
     if (input.observations.length) {
       const ids = input.observations.map((o) => o.parameter_id).filter(isUuid);
       if (ids.length) {
-        const req = sqlRequest(exec);
+        const req = pool.request();
         ids.forEach((id, i) => req.input(`p${i}`, sql.UniqueIdentifier, id));
         const inList = ids.map((_, i) => `@p${i}`).join(",");
         const found = await req.query(
@@ -246,7 +235,8 @@ async function insertScoutingRecordRow(
       }
     }
 
-    const insertReq = sqlRequest(exec)
+    const insertReq = pool
+      .request()
       .input("id", sql.UniqueIdentifier, recordId)
       .input("scout_id", sql.UniqueIdentifier, input.scout_id)
       .input("farm_id", sql.UniqueIdentifier, input.farm_id)
@@ -283,7 +273,8 @@ async function insertScoutingRecordRow(
 
     for (const o of input.observations) {
       if (!validParamIds.has(o.parameter_id)) continue;
-      await sqlRequest(exec)
+      await pool
+        .request()
         .input("id", sql.UniqueIdentifier, randomUUID())
         .input("record_id", sql.UniqueIdentifier, recordId)
         .input("parameter_id", sql.UniqueIdentifier, o.parameter_id)
@@ -295,10 +286,8 @@ async function insertScoutingRecordRow(
         `);
     }
 
-    if (ownTx) await ownTx.commit();
-    return { recordId, pool: pool instanceof sql.Transaction ? await getMssqlPool() : pool };
+    return { recordId, pool };
   } catch (e) {
-    if (ownTx) await ownTx.rollback();
     return fail(e instanceof Error ? e.message : "Insert failed");
   }
 }
@@ -789,14 +778,11 @@ export async function mssqlMirrorFieldLineToScouting(
   farmId: string,
   greenhouseId: string,
   mirror: FieldScoutingMirrorInput,
-  options?: { session?: ServerSession; exec?: SqlExecutor },
+  options?: { session?: ServerSession },
 ) {
   if (isNoIssueMarker(mirror.line.name)) return ok(null);
 
-  const pool =
-    options?.exec instanceof sql.Transaction
-      ? await getMssqlPool()
-      : options?.exec ?? (await getMssqlPool());
+  const pool = await getMssqlPool();
   const catalog = await resolveCatalogForGreenhouse(
     pool,
     greenhouseId,
@@ -856,7 +842,7 @@ export async function mssqlMirrorFieldLineToScouting(
       image_url: null,
       observations,
     },
-    { exec: options?.exec, session },
+    { session },
   );
 
   if ("error" in inserted && inserted.error) {

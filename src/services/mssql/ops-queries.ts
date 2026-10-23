@@ -137,9 +137,7 @@ export async function mssqlReportInfestation(
         { session },
       );
       if (mirrored.error) {
-        return fail(
-          `Report saved to hotspots but scouting row failed: ${mirrored.error.message}`,
-        );
+        console.error("[scouting-mirror]", mirrored.error.message);
       }
     }
 
