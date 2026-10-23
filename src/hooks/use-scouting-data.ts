@@ -64,7 +64,7 @@ function fromDemo(r: DemoScoutingRecord): UnifiedScoutingRecord {
   };
 }
 
-function fromRemote(r: ScoutingRecordRow): UnifiedScoutingRecord {
+export function unifiedFromScoutingRecordRow(r: ScoutingRecordRow): UnifiedScoutingRecord {
   return {
     id: r.id,
     roundId: r.round_id ?? null,
@@ -192,7 +192,7 @@ export function useScoutingData(days = 30, options?: Pick<MssqlPollOptions, "ena
     const since = new Date();
     since.setDate(since.getDate() - days);
     const { data } = await listScoutingRecordsSince(since);
-    setRemote((data as ScoutingRecordRow[] | null)?.map(fromRemote) ?? []);
+    setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
     setLoading(false);
     initialLoad.current = false;
   }, [days]);
@@ -223,7 +223,7 @@ export function useAllScoutingRecords() {
   const load = useCallback(async () => {
     if (!hasConfiguredBackend()) return;
     const { data } = await listScoutingRecords(500);
-    setRemote((data as ScoutingRecordRow[] | null)?.map(fromRemote) ?? []);
+    setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
   }, []);
 
   useEffect(() => {

@@ -37,6 +37,7 @@ import { anchorByGreenhouseName } from "@/lib/greenhouse-locations";
 import { greenhouseMapCenter } from "@/lib/scout-route-alignment";
 import { useGreenhouseAnchorsSync } from "@/hooks/use-greenhouse-anchors-sync";
 import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
+import { useScoutingDashboardFocusStore } from "@/store/scouting-dashboard-focus-store";
 
 const RouteMapView = dynamic(
   () => import("@/features/scouting/scout-route-map-view").then((m) => m.ScoutRouteMapView),
@@ -174,6 +175,25 @@ export function ScoutRouteMap() {
   const effectiveRoundId = hasConfiguredBackend()
     ? selectedRoundId
     : selectedRoundId || demoRoundList[0]?.id || "";
+
+  const setRoundFocus = useScoutingDashboardFocusStore((s) => s.setRoundFocus);
+
+  useEffect(() => {
+    if (!hasConfiguredBackend() || !effectiveRoundId) return;
+    const round = remoteRounds.find((r) => r.id === effectiveRoundId);
+    const ghName = round?.greenhouses?.name;
+    if (ghName) setRoundFocus(ghName, effectiveRoundId, round?.greenhouse_id);
+  }, [effectiveRoundId, remoteRounds, setRoundFocus]);
+
+  const onRoundSelect = useCallback(
+    (roundId: string) => {
+      setSelectedRoundId(roundId);
+      const round = remoteRounds.find((r) => r.id === roundId);
+      const ghName = round?.greenhouses?.name;
+      if (ghName) setRoundFocus(ghName, roundId, round?.greenhouse_id);
+    },
+    [remoteRounds, setRoundFocus],
+  );
 
   const trackPoints: TrackPoint[] = useMemo(() => {
     if (hasConfiguredBackend()) return remoteTrack;
@@ -363,19 +383,20 @@ export function ScoutRouteMap() {
           <h2 className="text-lg font-semibold">Scout routes</h2>
           <p className="text-sm text-muted-foreground">
             Green outline = greenhouse grid; pins are GPS-adjusted to bay×column.
-            Blue line = scout walk track only (not visit order).
+            Blue line = scout walk track only (not visit order). Each row is one walk
+            session—several for the same greenhouse (e.g. BEGH 17) is normal.
           </p>
         </div>
         <AppSelect
           aria-label="Scout round"
           className="w-full min-w-[12rem] sm:w-72"
           value={effectiveRoundId}
-          onChange={setSelectedRoundId}
+          onChange={onRoundSelect}
           options={
             hasConfiguredBackend()
               ? remoteRounds.map((r) => ({
                   value: r.id,
-                  label: `${r.greenhouses?.name ?? "GH"} · ${format(new Date(r.started_at), "MMM d HH:mm")}`,
+                  label: `${r.greenhouses?.name ?? "GH"} · ${format(new Date(r.started_at), "MMM d HH:mm")}${r.status === "active" ? " · active" : ""}`,
                 }))
               : demoRoundList.map((r) => ({
                   value: r.id,

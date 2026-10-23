@@ -8,20 +8,30 @@ import {
   BEMACK_GREENHOUSES,
   bayMaxForGreenhouse,
   columnCountForBay,
+  compareStarGreenhouseName,
   formatStarGreenhouseLabel,
   greenhouseCellExists,
   issueShortCode,
   maxColumnsForGreenhouse,
 } from "@/lib/bemack-master-data";
+import { useGreenhouseAnchorsSync } from "@/hooks/use-greenhouse-anchors-sync";
 import { gridInputFromHotspot } from "@/lib/field-heat-map";
 import { buildGreenhouseGrid, scoreColor, type ScoutingGridInput } from "@/lib/greenhouse-grid";
 import { filterUnresolvedScoutingRecords } from "@/lib/issue-resolution";
 import { SCOUTING_DATA_CHANGED_EVENT } from "@/lib/scouting-data-events";
 import { useHotspotResolutionRefs } from "@/hooks/use-hotspot-resolution";
-import { useScoutingData } from "@/hooks/use-scouting-data";
+import {
+  unifiedFromScoutingRecordRow,
+  useScoutingData,
+  type UnifiedScoutingRecord,
+} from "@/hooks/use-scouting-data";
+import { listRecordsForRound } from "@/services/supabase/scouting-round-service";
+import type { ScoutingRecordRow } from "@/services/supabase/scouting-service";
 import { hasConfiguredBackend } from "@/lib/data-backend";
 import { listActiveHotspotsForGreenhouse } from "@/services/supabase/infestation-service";
 import { useFieldHeatOverlayStore } from "@/store/field-heat-overlay-store";
+import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
+import { useScoutingDashboardFocusStore } from "@/store/scouting-dashboard-focus-store";
 import { cn } from "@/lib/utils";
 import type { ScoutCellLocation } from "@/lib/scout-observation-flow";
 
@@ -48,15 +58,96 @@ export function GreenhouseHeatGrid({
   onCellSelect,
   compact = false,
 }: GreenhouseHeatGridProps) {
+  useGreenhouseAnchorsSync();
+  const anchors = useGreenhouseAnchorStore((s) => s.anchors);
+  const focusGreenhouse = useScoutingDashboardFocusStore((s) => s.greenhouseName);
+  const focusGreenhouseId = useScoutingDashboardFocusStore((s) => s.greenhouseId);
+  const focusRoundId = useScoutingDashboardFocusStore((s) => s.roundId);
   const { records, loading, refresh } = useScoutingData(14);
+  const [roundRecords, setRoundRecords] = useState<UnifiedScoutingRecord[]>([]);
   const resolutionHotspots = useHotspotResolutionRefs();
   const overlays = useFieldHeatOverlayStore((s) => s.overlays);
   const [hotspotInputs, setHotspotInputs] = useState<ScoutingGridInput[]>([]);
   const [greenhouse, setGreenhouse] = useState(greenhouseName ?? "STGH01A");
+  const [userPickedGreenhouse, setUserPickedGreenhouse] = useState(false);
+
+  const effectiveRoundId = roundId ?? (lockGreenhouse ? null : focusRoundId);
+
+  const mergedRecords = useMemo(() => {
+    const byId = new Map(records.map((r) => [r.id, r]));
+    for (const r of roundRecords) byId.set(r.id, r);
+    return [...byId.values()];
+  }, [records, roundRecords]);
+
+  const greenhouseOptions = useMemo(() => {
+    const names = new Set<string>(BEMACK_GREENHOUSES);
+    for (const a of anchors) names.add(a.greenhouseName);
+    for (const r of mergedRecords) {
+      if (r.greenhouseName && r.greenhouseName !== "—") names.add(r.greenhouseName);
+    }
+    return [...names].sort(compareStarGreenhouseName);
+  }, [anchors, mergedRecords]);
+
+  const resolvedGreenhouseId = useMemo(() => {
+    if (greenhouseId) return greenhouseId;
+    if (focusGreenhouse === greenhouse && focusGreenhouseId) return focusGreenhouseId;
+    const fromAnchor = anchors.find((a) => a.greenhouseName === greenhouse)?.greenhouseId;
+    if (fromAnchor) return fromAnchor;
+    return mergedRecords.find((r) => r.greenhouseName === greenhouse)?.greenhouseId ?? null;
+  }, [greenhouseId, focusGreenhouse, focusGreenhouseId, anchors, greenhouse, mergedRecords]);
 
   useEffect(() => {
     if (greenhouseName) setGreenhouse(greenhouseName);
   }, [greenhouseName]);
+
+  useEffect(() => {
+    if (lockGreenhouse || greenhouseName) return;
+    if (
+      focusRoundId &&
+      focusGreenhouse &&
+      greenhouseOptions.includes(focusGreenhouse)
+    ) {
+      setGreenhouse(focusGreenhouse);
+      return;
+    }
+    if (userPickedGreenhouse) return;
+    if (focusGreenhouse && greenhouseOptions.includes(focusGreenhouse)) {
+      setGreenhouse(focusGreenhouse);
+      return;
+    }
+    if (!mergedRecords.length) return;
+    const latest = [...mergedRecords].sort(
+      (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
+    )[0];
+    if (latest?.greenhouseName && latest.greenhouseName !== "—") {
+      setGreenhouse(latest.greenhouseName);
+    }
+  }, [
+    mergedRecords,
+    focusGreenhouse,
+    focusRoundId,
+    greenhouseOptions,
+    lockGreenhouse,
+    greenhouseName,
+    userPickedGreenhouse,
+  ]);
+
+  useEffect(() => {
+    if (!hasConfiguredBackend() || !effectiveRoundId) {
+      setRoundRecords([]);
+      return;
+    }
+    let cancelled = false;
+    void listRecordsForRound(effectiveRoundId).then(({ data }) => {
+      if (cancelled) return;
+      setRoundRecords(
+        ((data as ScoutingRecordRow[] | null) ?? []).map(unifiedFromScoutingRecordRow),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveRoundId, records.length]);
 
   useEffect(() => {
     const onChanged = () => void refresh();
@@ -65,12 +156,12 @@ export function GreenhouseHeatGrid({
   }, [refresh]);
 
   useEffect(() => {
-    if (!hasConfiguredBackend() || !greenhouseId || !greenhouseName) {
+    if (!hasConfiguredBackend() || !resolvedGreenhouseId) {
       setHotspotInputs([]);
       return;
     }
     let cancelled = false;
-    void listActiveHotspotsForGreenhouse(greenhouseId).then(({ data }) => {
+    void listActiveHotspotsForGreenhouse(resolvedGreenhouseId).then(({ data }) => {
       if (cancelled || !data) return;
       const rows = data as Array<{
         pest_type: string;
@@ -82,7 +173,7 @@ export function GreenhouseHeatGrid({
         rows
           .map((h) =>
             gridInputFromHotspot({
-              greenhouseName,
+              greenhouseName: greenhouse,
               columnNo: h.column_no ?? null,
               bayNo: h.bay_no ?? null,
               pestType: h.pest_type,
@@ -95,12 +186,17 @@ export function GreenhouseHeatGrid({
     return () => {
       cancelled = true;
     };
-  }, [greenhouseId, greenhouseName, records.length, overlays.length]);
+  }, [resolvedGreenhouseId, greenhouse, records.length, overlays.length]);
 
   const grid = useMemo(() => {
-    const scoped = roundId
-      ? records.filter((r) => r.roundId === roundId)
-      : records;
+    let scoped = effectiveRoundId
+      ? mergedRecords.filter((r) => r.roundId === effectiveRoundId)
+      : mergedRecords;
+    if (effectiveRoundId && scoped.length === 0) {
+      scoped = mergedRecords.filter((r) => r.greenhouseName === greenhouse);
+    } else if (!effectiveRoundId) {
+      scoped = mergedRecords.filter((r) => r.greenhouseName === greenhouse);
+    }
     const activeRecords = filterUnresolvedScoutingRecords(scoped, resolutionHotspots);
     const input: ScoutingGridInput[] = activeRecords.map((r) => ({
       greenhouseName: r.greenhouseName,
@@ -123,7 +219,7 @@ export function GreenhouseHeatGrid({
     }
     input.push(...hotspotInputs.filter((h) => h.greenhouseName === greenhouse));
     return buildGreenhouseGrid(input, greenhouse);
-  }, [records, greenhouse, resolutionHotspots, roundId, overlays, hotspotInputs]);
+  }, [mergedRecords, greenhouse, resolutionHotspots, effectiveRoundId, overlays, hotspotInputs]);
 
   const { columns, bayRows, cellLookup } = useMemo(() => {
     const bayMax = bayMaxForGreenhouse(greenhouse);
@@ -152,7 +248,7 @@ export function GreenhouseHeatGrid({
               <p className="text-sm text-muted-foreground">
                 {interactive
                   ? `Tap a box to choose column × bay. Layout is ${bayMaxForGreenhouse(greenhouse)} bays × up to ${maxColumnsForGreenhouse(greenhouse)} columns.`
-                  : `Bays and columns match Star mapping (${bayMaxForGreenhouse(greenhouse)} bays, up to ${maxColumnsForGreenhouse(greenhouse)} columns for ${greenhouse}). Red = higher issue rating. Resolved hotspots are hidden.`}
+                  : `Bay × column grid for ${greenhouse} (${bayMaxForGreenhouse(greenhouse)} bays, up to ${maxColumnsForGreenhouse(greenhouse)} columns). Red = higher issue rating. Pick the same greenhouse as the scout round on the right.`}
               </p>
             </>
           ) : (
@@ -168,9 +264,13 @@ export function GreenhouseHeatGrid({
             Greenhouse
             <AppSelect
               aria-label="Greenhouse"
-              value={greenhouse}
-              onChange={setGreenhouse}
-              options={BEMACK_GREENHOUSES.map((gh) => ({
+              value={greenhouseOptions.includes(greenhouse) ? greenhouse : greenhouseOptions[0] ?? greenhouse}
+              onChange={(value) => {
+                setUserPickedGreenhouse(true);
+                setGreenhouse(value);
+                useScoutingDashboardFocusStore.getState().setGreenhouseFocus(value);
+              }}
+              options={greenhouseOptions.map((gh) => ({
                 value: gh,
                 label: formatStarGreenhouseLabel(gh),
               }))}
