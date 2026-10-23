@@ -83,6 +83,10 @@ export function trendsCellKey(greenhouseId: string, dateKey: string) {
   return `${greenhouseId}|${dateKey}`;
 }
 
+export function normalizeTrendIssueType(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
 export function filterTrendsRows(
   rows: TrendsScoutingRow[],
   filters: {
@@ -93,13 +97,15 @@ export function filterTrendsRows(
 ): TrendsScoutingRow[] {
   return rows.filter((row) => {
     if (filters.issueType && filters.issueType !== "all") {
-      if ((row.issueType ?? "") !== filters.issueType) return false;
+      if (normalizeTrendIssueType(row.issueType) !== filters.issueType) {
+        return false;
+      }
     }
     if (filters.issue && filters.issue !== "all") {
       if ((row.issue ?? "") !== filters.issue) return false;
     }
     if (filters.variety && filters.variety !== "all") {
-      if ((row.variety ?? "") !== filters.variety) return false;
+      if ((row.variety ?? "").trim() !== filters.variety) return false;
     }
     return true;
   });
@@ -279,10 +285,33 @@ export function sortGreenhousesBySeverity(
   greenhouses: { id: string; name: string }[],
   cells: Map<string, TrendsCell>,
   latestDate: string | undefined,
-  order: "worst" | "name",
+  order: "worst" | "name" | "improved",
+  prevDate?: string,
 ): { id: string; name: string }[] {
   if (order === "name" || !latestDate) {
     return [...greenhouses].sort((a, b) => compareStarGreenhouseName(a.name, b.name));
+  }
+
+  if (order === "improved" && prevDate) {
+    return [...greenhouses]
+      .map((gh) => {
+        const latestCell = cells.get(trendsCellKey(gh.id, latestDate));
+        const prevCell = cells.get(trendsCellKey(gh.id, prevDate));
+        const latestRating =
+          latestCell && latestCell.sampleCount > 0 ? latestCell.avgRating : null;
+        const prevRating =
+          prevCell && prevCell.sampleCount > 0 ? prevCell.avgRating : null;
+        const improvementDelta =
+          latestRating != null && prevRating != null ? prevRating - latestRating : -999;
+        return { ...gh, improvementDelta };
+      })
+      .sort((a, b) => {
+        if (b.improvementDelta !== a.improvementDelta) {
+          return b.improvementDelta - a.improvementDelta;
+        }
+        return compareStarGreenhouseName(a.name, b.name);
+      })
+      .map(({ id, name }) => ({ id, name }));
   }
 
   return [...greenhouses]
@@ -302,19 +331,47 @@ export function sortGreenhousesBySeverity(
 }
 
 /** Greenhouses that appear in scouting or spray rows (production trends grid). */
+function isUsableGreenhouseLabel(name: string | undefined | null, id: string) {
+  const n = (name ?? "").trim();
+  if (!n || n === "—") return false;
+  if (n === id) return false;
+  if (/^[0-9a-f-]{30,}$/i.test(n)) return false;
+  if (/^BEEEEE/i.test(n)) return false;
+  return true;
+}
+
+export function resolveTrendGreenhouseName(
+  id: string,
+  rawName: string | undefined | null,
+  catalogNames: Map<string, string>,
+): string {
+  if (isUsableGreenhouseLabel(rawName, id)) return rawName!.trim();
+  const fromCatalog = catalogNames.get(id);
+  if (fromCatalog) return fromCatalog;
+  return rawName?.trim() || id;
+}
+
 export function collectTrendGreenhouses(
   rows: TrendsScoutingRow[],
   sprays: TrendsSprayRow[],
+  catalogNames?: Map<string, string>,
 ): { id: string; name: string }[] {
   const byId = new Map<string, string>();
+  const catalog = catalogNames ?? new Map<string, string>();
   for (const row of rows) {
     if (row.greenhouseId) {
-      byId.set(row.greenhouseId, row.greenhouseName || row.greenhouseId);
+      byId.set(
+        row.greenhouseId,
+        resolveTrendGreenhouseName(row.greenhouseId, row.greenhouseName, catalog),
+      );
     }
   }
   for (const spray of sprays) {
     if (spray.greenhouseId && !byId.has(spray.greenhouseId)) {
-      byId.set(spray.greenhouseId, spray.greenhouseId);
+      byId.set(
+        spray.greenhouseId,
+        resolveTrendGreenhouseName(spray.greenhouseId, null, catalog),
+      );
     }
   }
   return Array.from(byId.entries())
@@ -329,8 +386,10 @@ export function collectFilterOptions(rows: TrendsScoutingRow[]) {
 
   for (const row of rows) {
     if (row.issue) issues.add(row.issue);
-    if (row.variety) varieties.add(row.variety);
-    if (row.issueType) issueTypes.add(row.issueType);
+    const variety = (row.variety ?? "").trim();
+    if (variety && variety !== "—") varieties.add(variety);
+    const it = normalizeTrendIssueType(row.issueType);
+    if (it) issueTypes.add(it);
   }
 
   return {

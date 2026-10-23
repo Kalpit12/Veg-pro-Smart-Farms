@@ -21,6 +21,8 @@ import {
   collectFilterOptions,
   collectTrendGreenhouses,
   filterTrendsRows,
+  normalizeTrendIssueType,
+  resolveTrendGreenhouseName,
   sortGreenhousesBySeverity,
   trendsCellKey,
   type TrendsArrowState,
@@ -29,7 +31,10 @@ import {
   type TrendsSprayRow,
 } from "@/lib/trends-arrows";
 import { cn } from "@/lib/utils";
-import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
+import {
+  getMyAssignedSitesAction,
+  listFarmsGreenhousesCatalogAction,
+} from "@/features/admin/supervisor-access-actions";
 import { compareStarGreenhouseName } from "@/lib/bemack-master-data";
 import { listSpraysForHistory } from "@/services/supabase/spray-service";
 
@@ -133,12 +138,37 @@ export function TrendsGrid({
   const [issueType, setIssueType] = useState("all");
   const [issue, setIssue] = useState("all");
   const [variety, setVariety] = useState("all");
-  const [sortOrder, setSortOrder] = useState<"worst" | "name">("worst");
+  const [sortOrder, setSortOrder] = useState<"worst" | "name" | "improved">(
+    "worst",
+  );
+  const [catalogNames, setCatalogNames] = useState<Map<string, string>>(
+    () => new Map(),
+  );
+  const [cropByGreenhouseId, setCropByGreenhouseId] = useState<
+    Map<string, string>
+  >(() => new Map());
   const [redOnly, setRedOnly] = useState(false);
   const [sprays, setSprays] = useState<TrendsSprayRow[]>([]);
 
   const mode = days >= 90 ? "week" : "day";
   const { records, loading } = useScoutingData(days);
+
+  useEffect(() => {
+    if (scope !== "all") return;
+    void listFarmsGreenhousesCatalogAction().then((result) => {
+      const nameMap = new Map<string, string>();
+      const cropMap = new Map<string, string>();
+      for (const farm of result.data ?? []) {
+        for (const g of farm.greenhouses) {
+          if (g.name) nameMap.set(g.id, g.name);
+          const crop = g.cropType?.trim();
+          if (crop) cropMap.set(g.id, crop);
+        }
+      }
+      setCatalogNames(nameMap);
+      setCropByGreenhouseId(cropMap);
+    });
+  }, [scope]);
 
   useEffect(() => {
     if (scope !== "assigned") return;
@@ -184,26 +214,44 @@ export function TrendsGrid({
     if (isOfflineDemo()) {
       rows = buildDemoTrendsRows(days);
     } else {
-      rows = records.map((r) => ({
-        greenhouseId: r.greenhouseId,
-        greenhouseName: r.greenhouseName,
-        recordedAt: r.recordedAt,
-        rating: r.rating,
-        issueType: r.issueType,
-        issue: r.issue,
-        variety: r.variety,
-      }));
+      rows = records.map((r) => {
+        const varietyRaw = (r.variety ?? "").trim();
+        const variety =
+          varietyRaw && varietyRaw !== "—"
+            ? varietyRaw
+            : (cropByGreenhouseId.get(r.greenhouseId) ?? "");
+        return {
+          greenhouseId: r.greenhouseId,
+          greenhouseName: resolveTrendGreenhouseName(
+            r.greenhouseId,
+            r.greenhouseName,
+            catalogNames,
+          ),
+          recordedAt: r.recordedAt,
+          rating: r.rating,
+          issueType: normalizeTrendIssueType(r.issueType),
+          issue: r.issue,
+          variety,
+        };
+      });
     }
     if (assignedIdSet) {
       rows = rows.filter((r) => assignedIdSet.has(r.greenhouseId));
     }
     return rows;
-  }, [days, records, assignedIdSet]);
+  }, [days, records, assignedIdSet, catalogNames, cropByGreenhouseId]);
 
-  const filterOptions = useMemo(
-    () => collectFilterOptions(sourceRows),
-    [sourceRows],
-  );
+  const filterOptions = useMemo(() => {
+    const base = collectFilterOptions(sourceRows);
+    const varieties = new Set(base.varieties);
+    for (const crop of cropByGreenhouseId.values()) {
+      if (crop) varieties.add(crop);
+    }
+    return {
+      ...base,
+      varieties: [...varieties].sort(),
+    };
+  }, [sourceRows, cropByGreenhouseId]);
 
   // Reset dependent filters when parent changes invalidates them
   useEffect(() => {
@@ -246,7 +294,7 @@ export function TrendsGrid({
         ? (assignedGreenhouses ?? [])
         : useDemo
           ? bemackTrendGreenhouses()
-          : collectTrendGreenhouses(rowsForGrid, sprayForGrid);
+          : collectTrendGreenhouses(rowsForGrid, sprayForGrid, catalogNames);
 
     return buildTrendsGrid(rowsForGrid, {
       dates,
@@ -266,15 +314,19 @@ export function TrendsGrid({
     scope,
     assignedGreenhouses,
     assignedIdSet,
+    catalogNames,
   ]);
 
   const sortedGreenhouses = useMemo(() => {
     const latest = model.dates[model.dates.length - 1];
+    const prev =
+      model.dates.length >= 2 ? model.dates[model.dates.length - 2] : undefined;
     let list = sortGreenhousesBySeverity(
       model.greenhouses,
       model.cells,
       latest,
       sortOrder,
+      prev,
     );
     if (redOnly && latest) {
       list = list.filter((gh) => {
@@ -357,7 +409,9 @@ export function TrendsGrid({
               .filter((name) => {
                 if (issueType === "all") return true;
                 return sourceRows.some(
-                  (r) => r.issue === name && r.issueType === issueType,
+                  (r) =>
+                    r.issue === name &&
+                    normalizeTrendIssueType(r.issueType) === issueType,
                 );
               })
               .map((name) => ({ value: name, label: name })),
@@ -378,9 +432,10 @@ export function TrendsGrid({
         <FilterSelect
           label="Sort"
           value={sortOrder}
-          onChange={(v) => setSortOrder(v as "worst" | "name")}
+          onChange={(v) => setSortOrder(v as "worst" | "name" | "improved")}
           options={[
             { value: "worst", label: "Worst first" },
+            { value: "improved", label: "Most improved" },
             { value: "name", label: "Name A–Z" },
           ]}
         />

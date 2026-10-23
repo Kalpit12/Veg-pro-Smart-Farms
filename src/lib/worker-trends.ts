@@ -76,6 +76,8 @@ export type WorkerTrendsSummary = {
   sparkline: DaySparkPoint[];
   rounds: WorkerRoundMetric[];
   isScout: boolean;
+  /** Any field work in the lookback window (reports, sprays, scouting, activities). */
+  isFieldActive: boolean;
   auditFlags: ("short" | "low_coverage" | "no_gps")[];
 };
 
@@ -228,6 +230,12 @@ export function summarizeWorkerEvents(
   const names = Array.from(greenhouseNames).sort();
   const workerEvents = events.filter((e) => e.workerId === workerId);
   const isScout = scoutingStops > 0 || rounds.length > 0;
+  const isFieldActive =
+    reports > 0 ||
+    sprays > 0 ||
+    scoutingStops > 0 ||
+    activities > 0 ||
+    rounds.length > 0;
   const stopsPerHour =
     totalDurationS > 0
       ? Math.round((totalRoundStops / (totalDurationS / 3600)) * 10) / 10
@@ -268,6 +276,7 @@ export function summarizeWorkerEvents(
         new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
     ),
     isScout,
+    isFieldActive,
     auditFlags: Array.from(auditFlagSet),
   };
 }
@@ -285,7 +294,7 @@ export function buildWorkerSummaries(
   );
 
   if (options?.scoutsOnly) {
-    list = list.filter((s) => s.isScout);
+    list = list.filter((s) => s.isFieldActive);
   }
 
   list.sort((a, b) => {

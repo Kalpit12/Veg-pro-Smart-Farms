@@ -34,8 +34,10 @@ export function ManagerWorkspaceHeader({ mode }: Props) {
   const pathname = usePathname();
   const onDashboard =
     mode === "manager"
-      ? pathname.startsWith("/manager/dashboard")
-      : pathname.startsWith("/admin/dashboard");
+      ? pathname.startsWith("/manager/dashboard") ||
+        pathname.startsWith("/manager/scouting")
+      : pathname.startsWith("/admin/dashboard") ||
+        pathname.startsWith("/admin/scouting");
   const sites = useManagerDashboardFilterStore((s) => s.sites);
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
   const dateYmds = useManagerDashboardFilterStore((s) => s.dateYmds);

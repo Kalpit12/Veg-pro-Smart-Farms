@@ -12,14 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function AdminScoutingPage() {
   return (
     <section className="space-y-8">
-      <header>
-        <h1 className="text-xl font-semibold">Smart Scouting</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          GPS routes, coverage, observations, and greenhouse accountability.
-        </p>
-      </header>
-
-      <ScoutingKpiDashboard liveUpdates={false} />
+      <ScoutingKpiDashboard liveUpdates={false} useWorkspaceFilters />
 
       <ScoutingLiveAuditPanel manualRefresh />
 

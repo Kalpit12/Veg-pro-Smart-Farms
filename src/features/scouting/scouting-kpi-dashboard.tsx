@@ -8,7 +8,15 @@ import {
   startOfDay,
 } from "date-fns";
 import { CalendarDays } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import {
+  formatHeaderDatesSummary,
+  isOnCalendarDay,
+  matchesManagerDashboardFilters,
+  todayDateYmd,
+} from "@/lib/manager-dashboard-filters";
+import { useManagerDashboardFilterStore } from "@/store/manager-dashboard-filter-store";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +47,11 @@ function computeKpis(
       ...dayRounds.map((r) => r.greenhouseName),
     ].filter(Boolean),
   ).size;
-  const farms = new Set(dayRecords.map((r) => r.farmName)).size;
+  const varietiesWithIssues = new Set(
+    dayRecords
+      .map((r) => r.variety?.trim())
+      .filter((v): v is string => Boolean(v && v !== "—")),
+  ).size;
   const highSeverity = dayRecords.filter((r) => (r.rating ?? 0) >= 4).length;
   const scoutsFromActivity = new Set(
     [...dayRecords.map((r) => r.scoutName), ...dayRounds.map((r) => r.scoutName)],
@@ -91,7 +103,7 @@ function computeKpis(
   return {
     scoutsActive: scoutsFromActivity || activeToday,
     distanceCovered: distance,
-    farmsCompleted: farms,
+    varietiesWithIssues,
     greenhousesInspected: greenhouses,
     newObservations: dayRecords.length,
     highSeverity,
@@ -111,15 +123,87 @@ function computeKpis(
 
 export function ScoutingKpiDashboard({
   liveUpdates = true,
+  useWorkspaceFilters = false,
 }: {
   liveUpdates?: boolean;
+  /** Use admin/manager shell date + farm/site/variety filters (hide local date picker). */
+  useWorkspaceFilters?: boolean;
 }) {
   const poll = { enabled: liveUpdates };
+  const sites = useManagerDashboardFilterStore((s) => s.sites);
+  const farmId = useManagerDashboardFilterStore((s) => s.farmId);
+  const greenhouseId = useManagerDashboardFilterStore((s) => s.greenhouseId);
+  const varietyFilter = useManagerDashboardFilterStore((s) => s.variety);
+  const dateYmds = useManagerDashboardFilterStore((s) => s.dateYmds);
+  const dateFilterAll = useManagerDashboardFilterStore((s) => s.dateFilterAll);
+
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
-  const isToday = isSameDay(selectedDay, new Date());
-  const lookbackDays = Math.min(
-    90,
-    Math.max(1, differenceInCalendarDays(startOfDay(new Date()), selectedDay) + 1),
+  const workspaceDayKeys = useMemo(() => {
+    if (!useWorkspaceFilters) return null;
+    if (dateFilterAll) return null;
+    const days = Array.isArray(dateYmds) ? dateYmds : [];
+    if (!days.length) return [todayDateYmd()];
+    return days;
+  }, [useWorkspaceFilters, dateFilterAll, dateYmds]);
+
+  const effectiveSelectedDay = useWorkspaceFilters
+    ? workspaceDayKeys?.length === 1
+      ? startOfDay(new Date(`${workspaceDayKeys[0]!}T12:00:00`))
+      : startOfDay(new Date())
+    : selectedDay;
+
+  const isToday = isSameDay(effectiveSelectedDay, new Date());
+  const lookbackDays = useMemo(() => {
+    if (useWorkspaceFilters && workspaceDayKeys && workspaceDayKeys.length > 0) {
+      const oldest = workspaceDayKeys.reduce((a, b) => (a < b ? a : b));
+      const from = startOfDay(new Date(`${oldest}T12:00:00`));
+      return Math.min(90, Math.max(1, differenceInCalendarDays(startOfDay(new Date()), from) + 1));
+    }
+    return Math.min(
+      90,
+      Math.max(1, differenceInCalendarDays(startOfDay(new Date()), effectiveSelectedDay) + 1),
+    );
+  }, [useWorkspaceFilters, workspaceDayKeys, effectiveSelectedDay]);
+
+  const filterSelection = useMemo(
+    () => ({
+      farmId,
+      greenhouseId,
+      variety: varietyFilter,
+      dateYmds: workspaceDayKeys ?? (Array.isArray(dateYmds) ? dateYmds : []),
+      dateFilterAll: useWorkspaceFilters ? dateFilterAll : false,
+    }),
+    [
+      farmId,
+      greenhouseId,
+      varietyFilter,
+      workspaceDayKeys,
+      dateYmds,
+      dateFilterAll,
+      useWorkspaceFilters,
+    ],
+  );
+
+  const matchesRecord = useCallback(
+    (r: UnifiedScoutingRecord) =>
+      matchesManagerDashboardFilters(sites, filterSelection, {
+        greenhouseId: r.greenhouseId,
+        greenhouseName: r.greenhouseName,
+        cropType: r.variety?.trim() && r.variety !== "—" ? r.variety : null,
+        createdAt: r.recordedAt,
+      }),
+    [sites, filterSelection],
+  );
+
+  const matchesRound = useCallback(
+    (r: UnifiedScoutingRound) =>
+      matchesManagerDashboardFilters(sites, filterSelection, {
+        farmId: r.farmId,
+        greenhouseId: r.greenhouseId,
+        greenhouseName: r.greenhouseName,
+        createdAt: r.startedAt,
+      }),
+    [sites, filterSelection],
   );
 
   const { records } = useScoutingData(lookbackDays, poll);
@@ -136,9 +220,18 @@ export function ScoutingKpiDashboard({
       setDayRoundsRemote(null);
       return;
     }
+    if (useWorkspaceFilters && dateFilterAll) {
+      setDayRoundsRemote(null);
+      return;
+    }
     let cancelled = false;
-    const from = startOfDay(selectedDay);
-    const to = endOfDay(selectedDay);
+    let from = startOfDay(effectiveSelectedDay);
+    let to = endOfDay(effectiveSelectedDay);
+    if (useWorkspaceFilters && workspaceDayKeys && workspaceDayKeys.length > 1) {
+      const sorted = [...workspaceDayKeys].sort();
+      from = startOfDay(new Date(`${sorted[0]!}T12:00:00`));
+      to = endOfDay(new Date(`${sorted[sorted.length - 1]!}T12:00:00`));
+    }
     void listScoutingRoundsBetween(from, to, 200).then(({ data }) => {
       if (cancelled) return;
       setDayRoundsRemote(
@@ -161,55 +254,74 @@ export function ScoutingKpiDashboard({
     return () => {
       cancelled = true;
     };
-  }, [selectedDay]);
+  }, [effectiveSelectedDay, useWorkspaceFilters, workspaceDayKeys, dateFilterAll]);
+
+  const inKpiDayWindow = useCallback(
+    (iso: string) => {
+      if (useWorkspaceFilters && dateFilterAll) return true;
+      if (useWorkspaceFilters && workspaceDayKeys && workspaceDayKeys.length > 0) {
+        return workspaceDayKeys.some((ymd) => isOnCalendarDay(iso, ymd));
+      }
+      return isWithinDay(iso, effectiveSelectedDay);
+    },
+    [useWorkspaceFilters, dateFilterAll, workspaceDayKeys, effectiveSelectedDay],
+  );
 
   const kpis = useMemo(() => {
+    const toRecord = (r: (typeof demoRecords)[number]): UnifiedScoutingRecord => ({
+      id: r.id,
+      roundId: r.roundId ?? null,
+      scoutName: r.scoutName,
+      farmName: r.farmName,
+      greenhouseName: r.greenhouseName,
+      greenhouseId: r.greenhouseId,
+      category: r.category,
+      variety: r.variety,
+      beds: r.beds,
+      columnNo: r.columnNo,
+      bayNo: r.bayNo,
+      issueType: r.issueType,
+      issue: r.issue,
+      rating: r.rating,
+      recordedAt: r.recordedAt,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      imageUrl: r.imageUrl ?? null,
+    });
+    const toRound = (r: (typeof demoRounds)[number]): UnifiedScoutingRound => ({
+      id: r.id,
+      scoutName: r.scoutName,
+      farmId: r.farmId,
+      greenhouseName: r.greenhouseName,
+      greenhouseId: r.greenhouseId,
+      startedAt: r.startedAt,
+      endedAt: r.endedAt ?? null,
+      status: r.status,
+      stopCount: r.stopCount,
+      distanceM: r.distanceM ?? 0,
+      durationS: r.durationS ?? null,
+      coveragePct: r.coveragePct ?? null,
+    });
+
     if (!hasConfiguredBackend()) {
-      const dayRounds = demoRounds.filter((r) => isWithinDay(r.startedAt, selectedDay));
-      const dayRecords = demoRecords.filter((r) => isWithinDay(r.recordedAt, selectedDay));
-      return computeKpis(
-        dayRecords.map((r) => ({
-          id: r.id,
-          roundId: r.roundId ?? null,
-          scoutName: r.scoutName,
-          farmName: r.farmName,
-          greenhouseName: r.greenhouseName,
-          greenhouseId: r.greenhouseId,
-          category: r.category,
-          variety: r.variety,
-          beds: r.beds,
-          columnNo: r.columnNo,
-          bayNo: r.bayNo,
-          issueType: r.issueType,
-          issue: r.issue,
-          rating: r.rating,
-          recordedAt: r.recordedAt,
-          latitude: r.latitude,
-          longitude: r.longitude,
-          imageUrl: r.imageUrl ?? null,
-        })),
-        dayRounds.map((r) => ({
-          id: r.id,
-          scoutName: r.scoutName,
-          farmId: r.farmId,
-          greenhouseName: r.greenhouseName,
-          greenhouseId: r.greenhouseId,
-          startedAt: r.startedAt,
-          endedAt: r.endedAt ?? null,
-          status: r.status,
-          stopCount: r.stopCount,
-          distanceM: r.distanceM ?? 0,
-          durationS: r.durationS ?? null,
-          coveragePct: r.coveragePct ?? null,
-        })),
-        isToday,
-      );
+      const dayRecords = demoRecords
+        .filter((r) => inKpiDayWindow(r.recordedAt))
+        .map(toRecord)
+        .filter((r) => !useWorkspaceFilters || matchesRecord(r));
+      const dayRounds = demoRounds
+        .filter((r) => inKpiDayWindow(r.startedAt))
+        .map(toRound)
+        .filter((r) => !useWorkspaceFilters || matchesRound(r));
+      return computeKpis(dayRecords, dayRounds, isToday);
     }
 
-    const dayRecords = records.filter((r) => isWithinDay(r.recordedAt, selectedDay));
-    const dayRounds =
+    const dayRecords = records
+      .filter((r) => inKpiDayWindow(r.recordedAt))
+      .filter((r) => !useWorkspaceFilters || matchesRecord(r));
+    const dayRounds = (
       dayRoundsRemote ??
-      recentRounds.filter((r) => isWithinDay(r.startedAt, selectedDay));
+      recentRounds.filter((r) => inKpiDayWindow(r.startedAt))
+    ).filter((r) => !useWorkspaceFilters || matchesRound(r));
 
     return computeKpis(dayRecords, dayRounds, isToday);
   }, [
@@ -217,9 +329,12 @@ export function ScoutingKpiDashboard({
     recentRounds,
     demoRounds,
     demoRecords,
-    selectedDay,
     isToday,
     dayRoundsRemote,
+    inKpiDayWindow,
+    useWorkspaceFilters,
+    matchesRecord,
+    matchesRound,
   ]);
 
   const cards = [
@@ -228,7 +343,7 @@ export function ScoutingKpiDashboard({
       value: String(kpis.scoutsActive),
     },
     { label: "Distance covered", value: formatDistance(kpis.distanceCovered) },
-    { label: "Farms completed", value: String(kpis.farmsCompleted) },
+    { label: "Varieties with issues", value: String(kpis.varietiesWithIssues) },
     { label: "Greenhouses inspected", value: String(kpis.greenhousesInspected) },
     { label: "New observations", value: String(kpis.newObservations) },
     { label: "High severity", value: String(kpis.highSeverity) },
@@ -238,7 +353,7 @@ export function ScoutingKpiDashboard({
     },
   ];
 
-  const dateInputValue = format(selectedDay, "yyyy-MM-dd");
+  const dateInputValue = format(effectiveSelectedDay, "yyyy-MM-dd");
   const maxDate = format(new Date(), "yyyy-MM-dd");
 
   return (
@@ -246,48 +361,59 @@ export function ScoutingKpiDashboard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">
-            {isToday ? "Today's scouting" : `Scouting · ${format(selectedDay, "MMM d, yyyy")}`}
+            {useWorkspaceFilters
+              ? "Today's scouting"
+              : isToday
+                ? "Today's scouting"
+                : `Scouting · ${format(effectiveSelectedDay, "MMM d, yyyy")}`}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {isToday
-              ? "Live operational snapshot across Star scouting activity."
-              : "Operational snapshot for the selected day."}
+            {useWorkspaceFilters
+              ? `Snapshot for ${formatHeaderDatesSummary(
+                  workspaceDayKeys ?? [],
+                  dateFilterAll,
+                ).toLowerCase()} — use header filters for farm, site, and variety.`
+              : isToday
+                ? "Live operational snapshot across Star scouting activity."
+                : "Operational snapshot for the selected day."}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label
-            htmlFor="scouting-kpi-date"
-            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-          >
-            <CalendarDays className="size-3.5" />
-            Date
-          </label>
-          <input
-            id="scouting-kpi-date"
-            type="date"
-            value={dateInputValue}
-            max={maxDate}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (!next) return;
-              setSelectedDay(startOfDay(new Date(`${next}T12:00:00`)));
-            }}
-            className={cn(
-              "h-9 rounded-lg border border-border bg-background/80 px-3 text-sm",
-              "text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            )}
-          />
-          {!isToday ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedDay(startOfDay(new Date()))}
+        {!useWorkspaceFilters ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor="scouting-kpi-date"
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
             >
-              Today
-            </Button>
-          ) : null}
-        </div>
+              <CalendarDays className="size-3.5" />
+              Date
+            </label>
+            <input
+              id="scouting-kpi-date"
+              type="date"
+              value={dateInputValue}
+              max={maxDate}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (!next) return;
+                setSelectedDay(startOfDay(new Date(`${next}T12:00:00`)));
+              }}
+              className={cn(
+                "h-9 rounded-lg border border-border bg-background/80 px-3 text-sm",
+                "text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              )}
+            />
+            {!isToday ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDay(startOfDay(new Date()))}
+              >
+                Today
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {cards.map((c) => (
@@ -328,7 +454,11 @@ export function ScoutingKpiDashboard({
         </div>
       ) : (
         <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-          No scouting activity recorded for {format(selectedDay, "MMMM d, yyyy")}.
+          No scouting activity recorded for{" "}
+          {useWorkspaceFilters
+            ? formatHeaderDatesSummary(workspaceDayKeys ?? [], dateFilterAll).toLowerCase()
+            : format(effectiveSelectedDay, "MMMM d, yyyy")}
+          .
         </p>
       )}
     </section>
