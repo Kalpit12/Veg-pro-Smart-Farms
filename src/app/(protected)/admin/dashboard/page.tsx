@@ -4,8 +4,6 @@ import { LiveActivityFeed } from "@/features/dashboard/components/live-activity-
 import { MetricsGrid } from "@/features/dashboard/components/metrics-grid";
 import { OperationsAlerts } from "@/features/dashboard/components/operations-alerts";
 import { YesterdayScoutedGreenhouses } from "@/features/dashboard/components/yesterday-scouted-greenhouses";
-import { PendingInfestationQueue } from "@/features/infestation/pending-infestation-queue";
-
 export default function AdminDashboardPage() {
   return (
     <section className="space-y-4">
@@ -16,7 +14,6 @@ export default function AdminDashboardPage() {
         managerDashboardFilters
       />
       <MetricsGrid audience="admin" liveUpdates={false} managerDashboardFilters />
-      <PendingInfestationQueue compact managerDashboardFilters />
       <OperationsAlerts audience="admin" liveUpdates={false} managerDashboardFilters />
       <div className="grid items-start gap-4 xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
