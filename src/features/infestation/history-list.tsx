@@ -1,19 +1,28 @@
 "use client";
 
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, subDays } from "date-fns";
 import { User } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { AppSelect } from "@/components/ui/app-select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getMyAssignedSitesAction,
+  listFarmsGreenhousesCatalogAction,
+} from "@/features/admin/supervisor-access-actions";
 import { GreenhouseConditionPanel } from "@/features/infestation/greenhouse-condition-panel";
 import { GreenhouseImprovementChart } from "@/features/infestation/greenhouse-improvement-chart";
 import { useDemoRefresh } from "@/hooks/use-demo-refresh";
-import { useRealtimeFieldFeed } from "@/hooks/use-realtime-field-feed";
-import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
-import { useRealtimePositions } from "@/hooks/use-realtime-positions";
 import { useToast } from "@/hooks/use-toast";
 import {
   getDemoGreenhouseCondition,
@@ -26,11 +35,21 @@ import {
   computeImprovementTrend,
   type GreenhouseConditionCompare,
 } from "@/lib/greenhouse-condition";
-import { getHistorySinceDate, HISTORY_LOOKBACK_MONTHS } from "@/lib/history-range";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
+import { ALL } from "@/lib/manager-dashboard-filters";
+import type { FarmGreenhouseCatalogItem } from "@/services/supervisor-access-service";
 import { listHotspotsForHistory } from "@/services/supabase/infestation-service";
 import { listSpraysForHistory } from "@/services/supabase/spray-service";
 import { useFieldOpsStore } from "@/store/field-ops-store";
+
+const RANGE_OPTIONS = [
+  { value: 7, label: "Last 7 days" },
+  { value: 14, label: "Last 14 days" },
+  { value: 30, label: "Last 30 days" },
+  { value: 90, label: "Last 90 days" },
+] as const;
+
+type RangeDays = (typeof RANGE_OPTIONS)[number]["value"];
 
 type HistoryItem = {
   id: string;
@@ -45,11 +64,6 @@ type HistoryItem = {
   created_at: string;
   severity?: number;
   status?: string;
-};
-
-type GreenhouseOption = {
-  id: string;
-  label: string;
 };
 
 function mapHotspotToHistory(row: {
@@ -117,7 +131,36 @@ function formatWorkedAt(iso: string) {
   return format(d, "MMM d, yyyy · h:mm a");
 }
 
-export function HistoryList() {
+function greenhousesForFarmCatalog(
+  sites: FarmGreenhouseCatalogItem[],
+  farmId: string,
+) {
+  if (farmId === ALL) return sites.flatMap((f) => f.greenhouses);
+  return sites.find((f) => f.farmId === farmId)?.greenhouses ?? [];
+}
+
+function varietiesForCatalog(
+  sites: FarmGreenhouseCatalogItem[],
+  farmId: string,
+  greenhouseId: string,
+) {
+  const ghs = greenhousesForFarmCatalog(sites, farmId);
+  const pool =
+    greenhouseId === ALL ? ghs : ghs.filter((g) => g.id === greenhouseId);
+  const set = new Set<string>();
+  for (const g of pool) {
+    const v = g.cropType?.trim();
+    if (v) set.add(v);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+type Props = {
+  scope?: "admin" | "manager";
+  fullReportRef?: RefObject<HTMLDivElement | null>;
+};
+
+export function HistoryList({ scope = "admin", fullReportRef }: Props) {
   const { toast } = useToast();
   const { tick } = useDemoRefresh();
   const searchParams = useSearchParams();
@@ -126,15 +169,31 @@ export function HistoryList() {
   const demoHotspots = useFieldOpsStore((s) => s.demoHotspots);
   const demoSprays = useFieldOpsStore((s) => s.demoSprays);
   const [items, setItems] = useState<HistoryItem[]>([]);
-  const [greenhouseOptions, setGreenhouseOptions] = useState<GreenhouseOption[]>(
-    [],
-  );
+  const [sites, setSites] = useState<FarmGreenhouseCatalogItem[]>([]);
+  const [loadingSites, setLoadingSites] = useState(true);
   const [loading, setLoading] = useState(true);
+  const initialLoadDone = useRef(false);
+
+  const [rangeDays, setRangeDays] = useState<RangeDays>(90);
+  const [farmId, setFarmId] = useState(ALL);
+  const [greenhouseId, setGreenhouseId] = useState(
+    initialGreenhouse || ALL,
+  );
+  const [variety, setVariety] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState<"all" | "report" | "spray">(() => {
     if (initialType === "report" || initialType === "spray") return initialType;
     return "all";
   });
-  const [greenhouseFilter, setGreenhouseFilter] = useState(initialGreenhouse);
+
+  const since = useMemo(
+    () => subDays(new Date(), rangeDays),
+    [rangeDays],
+  );
+
+  const assignedGhIds = useMemo(() => {
+    if (scope !== "manager") return null;
+    return new Set(sites.flatMap((f) => f.greenhouses.map((g) => g.id)));
+  }, [scope, sites]);
 
   useEffect(() => {
     if (initialType === "report" || initialType === "spray") {
@@ -143,22 +202,41 @@ export function HistoryList() {
   }, [initialType]);
 
   useEffect(() => {
-    if (initialGreenhouse) setGreenhouseFilter(initialGreenhouse);
+    if (initialGreenhouse) setGreenhouseId(initialGreenhouse);
   }, [initialGreenhouse]);
 
-  const since = useMemo(() => getHistorySinceDate(), []);
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingSites(true);
+    void (scope === "admin"
+      ? listFarmsGreenhousesCatalogAction()
+      : getMyAssignedSitesAction()
+    ).then((result) => {
+      if (cancelled) return;
+      setSites(result.data ?? []);
+      setLoadingSites(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [scope]);
 
   const refresh = useCallback(async () => {
-    const greenhouseId = greenhouseFilter || undefined;
-
     if (isOfflineDemo()) {
-      const options = getDemoGreenhouseOptions().map((g) => ({
-        id: g.id,
-        label: g.label,
-      }));
-      setGreenhouseOptions(options);
+      const options = getDemoGreenhouseOptions();
+      setSites([
+        {
+          farmId: "demo",
+          farmName: "Demo farm",
+          greenhouses: options.map((g) => ({
+            id: g.id,
+            name: g.label.split(" / ").pop() ?? g.label,
+            cropType: "Athena",
+          })),
+        },
+      ]);
 
-      const staticHistory = getDemoHistory(greenhouseId);
+      const staticHistory = getDemoHistory(undefined);
       const liveReports = demoHotspots.map((h) =>
         mapHotspotToHistory({
           id: h.id,
@@ -195,14 +273,15 @@ export function HistoryList() {
       });
       setItems(deduped);
       setLoading(false);
+      initialLoadDone.current = true;
       return;
     }
 
     try {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       const [hotspotsRes, spraysRes] = await Promise.all([
-        listHotspotsForHistory({ greenhouseId, since, limit: 500 }),
-        listSpraysForHistory({ greenhouseId, since, limit: 500 }),
+        listHotspotsForHistory({ since, limit: 2000 }),
+        listSpraysForHistory({ since, limit: 2000 }),
       ]);
       if (hotspotsRes.error) throw hotspotsRes.error;
       if (spraysRes.error) throw spraysRes.error;
@@ -217,23 +296,7 @@ export function HistoryList() {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
-
       setItems(merged);
-
-      setGreenhouseOptions((prev) => {
-        const optionMap = new Map(prev.map((o) => [o.id, o.label]));
-        for (const item of merged) {
-          if (item.greenhouse_id && item.greenhouse !== "—") {
-            optionMap.set(
-              item.greenhouse_id,
-              `${item.farm} / ${item.greenhouse}`,
-            );
-          }
-        }
-        return Array.from(optionMap.entries())
-          .map(([id, label]) => ({ id, label }))
-          .sort((a, b) => a.label.localeCompare(b.label));
-      });
     } catch (e) {
       toast({
         title: "History unavailable",
@@ -242,83 +305,181 @@ export function HistoryList() {
       });
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
-  }, [greenhouseFilter, since, toast, demoHotspots, demoSprays]);
+  }, [since, toast, demoHotspots, demoSprays]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh, tick]);
+  }, [refresh]);
 
   useEffect(() => {
-    if (greenhouseFilter || !greenhouseOptions.length) return;
-    setGreenhouseFilter(greenhouseOptions[0].id);
-  }, [greenhouseOptions, greenhouseFilter]);
+    if (!isOfflineDemo()) return;
+    void refresh();
+  }, [tick, refresh]);
 
-  useRealtimeHotspots(refresh);
-  useRealtimeFieldFeed(refresh);
-  useRealtimePositions(refresh);
+  const scopeFilteredItems = useMemo(() => {
+    if (!assignedGhIds) return items;
+    return items.filter(
+      (i) => i.greenhouse_id && assignedGhIds.has(i.greenhouse_id),
+    );
+  }, [items, assignedGhIds]);
 
   const filtered = useMemo(() => {
-    let result = items.filter((i) => new Date(i.created_at) >= since);
+    let result = scopeFilteredItems.filter(
+      (i) => new Date(i.created_at) >= since,
+    );
     if (typeFilter !== "all") {
       result = result.filter((i) => i.type === typeFilter);
     }
+    if (farmId !== ALL) {
+      const farm = sites.find((f) => f.farmId === farmId);
+      const farmName = farm?.farmName;
+      if (farmName) result = result.filter((i) => i.farm === farmName);
+    }
+    if (greenhouseId !== ALL) {
+      result = result.filter((i) => i.greenhouse_id === greenhouseId);
+    }
+    if (variety !== ALL) {
+      result = result.filter((i) => i.variety === variety);
+    }
     return result;
-  }, [items, typeFilter, since]);
+  }, [
+    scopeFilteredItems,
+    since,
+    typeFilter,
+    farmId,
+    greenhouseId,
+    variety,
+    sites,
+  ]);
+
+  const chartGreenhouseId =
+    greenhouseId !== ALL ? greenhouseId : filtered[0]?.greenhouse_id ?? "";
 
   const conditionCompare = useMemo((): GreenhouseConditionCompare | null => {
-    if (!greenhouseFilter) return null;
+    if (!chartGreenhouseId) return null;
 
     if (isOfflineDemo()) {
-      return getDemoGreenhouseCondition(greenhouseFilter);
+      return getDemoGreenhouseCondition(chartGreenhouseId);
     }
 
-    return computeGreenhouseCondition(items, greenhouseFilter);
-  }, [greenhouseFilter, items]);
+    return computeGreenhouseCondition(scopeFilteredItems, chartGreenhouseId);
+  }, [chartGreenhouseId, scopeFilteredItems]);
 
   const improvementTrend = useMemo(() => {
-    if (!conditionCompare || !greenhouseFilter) return [];
+    if (!conditionCompare || !chartGreenhouseId) return [];
 
     if (isOfflineDemo()) {
       return buildImprovementTrendFromCompare(conditionCompare);
     }
 
-    return computeImprovementTrend(items, greenhouseFilter, conditionCompare);
-  }, [conditionCompare, greenhouseFilter, items]);
-
-  const selectedGreenhouseLabel = useMemo(() => {
-    return (
-      greenhouseOptions.find((g) => g.id === greenhouseFilter)?.label ??
-      "Select a greenhouse"
+    return computeImprovementTrend(
+      scopeFilteredItems,
+      chartGreenhouseId,
+      conditionCompare,
+      since,
     );
-  }, [greenhouseFilter, greenhouseOptions]);
+  }, [conditionCompare, chartGreenhouseId, scopeFilteredItems, since]);
 
-  if (loading) {
+  const farmOptions = useMemo(
+    () => [
+      { value: ALL, label: "All farms" },
+      ...sites.map((f) => ({ value: f.farmId, label: f.farmName })),
+    ],
+    [sites],
+  );
+
+  const greenhouseOptions = useMemo(
+    () => [
+      { value: ALL, label: "All sites" },
+      ...greenhousesForFarmCatalog(sites, farmId)
+        .filter((g) => variety === ALL || g.cropType === variety)
+        .map((g) => ({ value: g.id, label: g.name })),
+    ],
+    [sites, farmId, variety],
+  );
+
+  const varietyOptions = useMemo(
+    () => [
+      { value: ALL, label: "All varieties" },
+      ...varietiesForCatalog(sites, farmId, greenhouseId).map((v) => ({
+        value: v,
+        label: v,
+      })),
+    ],
+    [sites, farmId, greenhouseId],
+  );
+
+  const groupedForFullReport = useMemo(() => {
+    const byGh = new Map<string, HistoryItem[]>();
+    for (const item of scopeFilteredItems.filter(
+      (i) => new Date(i.created_at) >= since,
+    )) {
+      const key = item.greenhouse_id || item.greenhouse;
+      const list = byGh.get(key) ?? [];
+      list.push(item);
+      byGh.set(key, list);
+    }
+    return [...byGh.entries()].sort((a, b) => {
+      const la = a[1][0]?.greenhouse ?? "";
+      const lb = b[1][0]?.greenhouse ?? "";
+      return la.localeCompare(lb);
+    });
+  }, [scopeFilteredItems, since]);
+
+  if (loading && !initialLoadDone.current) {
     return <Skeleton className="h-64 w-full rounded-2xl" />;
   }
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-        <label className="block min-w-[14rem] flex-1 text-sm font-medium sm:max-w-md">
-          Greenhouse
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <FilterField label="Range">
           <AppSelect
-            aria-label="Greenhouse"
-            className="mt-1.5"
-            align="start"
-            value={greenhouseFilter}
-            onChange={setGreenhouseFilter}
-            placeholder="Choose greenhouse…"
-            options={greenhouseOptions.map((g) => ({ value: g.id, label: g.label }))}
+            aria-label="History range"
+            value={String(rangeDays)}
+            onChange={(v) => setRangeDays(Number(v) as RangeDays)}
+            options={RANGE_OPTIONS.map((o) => ({
+              value: String(o.value),
+              label: o.label,
+            }))}
           />
-        </label>
-
-        <label className="block min-w-[10rem] text-sm font-medium sm:max-w-xs">
-          Type
+        </FilterField>
+        <FilterField label="Farm">
+          <AppSelect
+            aria-label="Farm"
+            value={farmId}
+            onChange={setFarmId}
+            disabled={loadingSites}
+            options={
+              farmOptions.length
+                ? farmOptions
+                : [{ value: ALL, label: "Loading…" }]
+            }
+          />
+        </FilterField>
+        <FilterField label="Site">
+          <AppSelect
+            aria-label="Greenhouse site"
+            value={greenhouseId}
+            onChange={setGreenhouseId}
+            disabled={loadingSites}
+            options={greenhouseOptions}
+          />
+        </FilterField>
+        <FilterField label="Variety">
+          <AppSelect
+            aria-label="Variety"
+            value={variety}
+            onChange={setVariety}
+            disabled={loadingSites}
+            options={varietyOptions}
+          />
+        </FilterField>
+        <FilterField label="Type">
           <AppSelect
             aria-label="History type"
-            className="mt-1.5"
-            align="start"
             value={typeFilter}
             onChange={(next) => setTypeFilter(next as typeof typeFilter)}
             options={[
@@ -327,22 +488,23 @@ export function HistoryList() {
               { value: "spray", label: "Sprays only" },
             ]}
           />
-        </label>
+        </FilterField>
       </div>
 
-      {conditionCompare && improvementTrend.length ? (
+      {conditionCompare && improvementTrend.length && greenhouseId !== ALL ? (
         <GreenhouseImprovementChart
           compare={conditionCompare}
           trend={improvementTrend}
         />
       ) : null}
 
-      {conditionCompare ? <GreenhouseConditionPanel compare={conditionCompare} /> : null}
+      {conditionCompare && greenhouseId !== ALL ? (
+        <GreenhouseConditionPanel compare={conditionCompare} />
+      ) : null}
 
       <h2 className="text-sm font-semibold">Activity timeline</h2>
       <p className="text-xs text-muted-foreground">
-        {selectedGreenhouseLabel} · Last {HISTORY_LOOKBACK_MONTHS} months (
-        {format(since, "MMM d, yyyy")} – {format(new Date(), "MMM d, yyyy")}) ·{" "}
+        {format(since, "MMM d, yyyy")} – {format(new Date(), "MMM d, yyyy")} ·{" "}
         {filtered.length} record{filtered.length === 1 ? "" : "s"}
       </p>
 
@@ -398,10 +560,68 @@ export function HistoryList() {
 
       {!filtered.length ? (
         <p className="text-sm text-muted-foreground">
-          No reports or sprays for this greenhouse in the last{" "}
-          {HISTORY_LOOKBACK_MONTHS} months.
+          No reports or sprays match these filters for the selected range.
         </p>
       ) : null}
+
+      {fullReportRef ? (
+        <div
+          ref={fullReportRef}
+          aria-hidden
+          className="pointer-events-none fixed top-0 left-[-10000px] z-[-1] w-[820px] space-y-6 bg-white p-6 text-black"
+        >
+          <header>
+            <h1 className="text-2xl font-bold">VegPro full history report</h1>
+            <p className="text-sm text-neutral-600">
+              {format(since, "MMMM d, yyyy")} – {format(new Date(), "MMMM d, yyyy")}{" "}
+              · all greenhouses · {scopeFilteredItems.length} total events
+            </p>
+          </header>
+          {groupedForFullReport.map(([ghKey, ghItems]) => {
+            const sample = ghItems[0]!;
+            return (
+              <section key={ghKey} className="break-inside-avoid space-y-2">
+                <h2 className="border-b border-neutral-200 pb-1 text-lg font-semibold">
+                  {sample.farm} / {sample.greenhouse}
+                  {sample.variety && sample.variety !== "—"
+                    ? ` · ${sample.variety}`
+                    : ""}
+                </h2>
+                <ul className="space-y-2 text-sm">
+                  {ghItems.map((item) => (
+                    <li key={`${item.type}-${item.id}`} className="rounded border p-2">
+                      <p className="font-medium">
+                        {item.type === "report" ? "Report" : "Spray"}: {item.title}
+                      </p>
+                      <p className="text-neutral-700">{item.detail}</p>
+                      <p className="text-neutral-500">
+                        {item.worker} · {formatWorkedAt(item.created_at)}
+                        {item.severity != null ? ` · severity ${item.severity}/5` : ""}
+                        {item.status ? ` · ${item.status}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block min-w-[9rem] flex-1 text-sm font-medium sm:max-w-xs">
+      {label}
+      <div className="mt-1.5">{children}</div>
+    </label>
   );
 }

@@ -1,4 +1,9 @@
-import { compareStarGreenhouseName } from "@/lib/bemack-master-data";
+import {
+  BEMACK_DISEASES,
+  BEMACK_PESTS,
+  BEMACK_VARIETIES,
+  compareStarGreenhouseName,
+} from "@/lib/bemack-master-data";
 
 export type TrendsArrowTone = "bad" | "okay";
 
@@ -102,7 +107,9 @@ export function filterTrendsRows(
       }
     }
     if (filters.issue && filters.issue !== "all") {
-      if ((row.issue ?? "") !== filters.issue) return false;
+      const want = filters.issue.trim().toLowerCase();
+      const got = (row.issue ?? "").trim().toLowerCase();
+      if (got !== want) return false;
     }
     if (filters.variety && filters.variety !== "all") {
       if ((row.variety ?? "").trim() !== filters.variety) return false;
@@ -377,6 +384,43 @@ export function collectTrendGreenhouses(
   return Array.from(byId.entries())
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => compareStarGreenhouseName(a.name, b.name));
+}
+
+/** VegPro master lists + names seen in scouting rows (for filter dropdowns). */
+export function trendIssueOptionsForType(
+  issueType: string,
+  observedIssues: string[],
+) {
+  const seen = new Set<string>();
+  for (const name of observedIssues) {
+    const t = name.trim();
+    if (t) seen.add(t);
+  }
+  const master =
+    issueType === "pest"
+      ? BEMACK_PESTS
+      : issueType === "disease"
+        ? BEMACK_DISEASES
+        : ([...BEMACK_PESTS, ...BEMACK_DISEASES] as const);
+  for (const name of master) seen.add(name);
+  return [...seen].sort((a, b) => a.localeCompare(b));
+}
+
+export function trendVarietyOptions(
+  observedVarieties: string[],
+  catalogCrops: string[],
+) {
+  const set = new Set<string>();
+  for (const v of BEMACK_VARIETIES["Super Premium"]) set.add(v);
+  for (const v of observedVarieties) {
+    const t = v.trim();
+    if (t && t !== "—") set.add(t);
+  }
+  for (const v of catalogCrops) {
+    const t = v.trim();
+    if (t) set.add(t);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
 }
 
 export function collectFilterOptions(rows: TrendsScoutingRow[]) {

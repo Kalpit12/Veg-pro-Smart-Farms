@@ -6,15 +6,20 @@ import { format } from "date-fns";
 import { DownloadPagePdfButton } from "@/components/download-page-pdf-button";
 import { HistoryList } from "@/features/infestation/history-list";
 
-export function HistoryPageView() {
+export function HistoryPageView({
+  scope = "admin",
+}: {
+  scope?: "admin" | "manager";
+}) {
   const reportRef = useRef<HTMLDivElement>(null);
+  const fullReportRef = useRef<HTMLDivElement>(null);
   const filename = `vegpro-history-report-${format(new Date(), "yyyy-MM-dd")}`;
 
   return (
     <section className="space-y-4">
       <div className="flex justify-end">
         <DownloadPagePdfButton
-          targetRef={reportRef}
+          targetRef={fullReportRef}
           filename={filename}
           label="Download full report"
         />
@@ -24,10 +29,11 @@ export function HistoryPageView() {
         <header>
           <h1 className="text-xl font-semibold">History</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Greenhouse health, improvement chart, and field activity for the last 3 months.
+            Greenhouse health, improvement chart, and field activity. Filter by farm,
+            site, variety, and date range. Full PDF includes every greenhouse in range.
           </p>
         </header>
-        <HistoryList />
+        <HistoryList scope={scope} fullReportRef={fullReportRef} />
       </div>
     </section>
   );

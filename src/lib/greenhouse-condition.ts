@@ -210,16 +210,22 @@ export function computeImprovementTrend(
   items: HistoryRecordForCondition[],
   greenhouseId: string,
   compare?: GreenhouseConditionCompare | null,
+  rangeSince?: Date,
 ): ImprovementTrendPoint[] {
   const ghItems = items.filter((i) => i.greenhouse_id === greenhouseId);
   if (!ghItems.length && compare) {
     return buildImprovementTrendFromCompare(compare);
   }
 
-  const since = getHistorySinceDate();
+  const since = rangeSince ?? getHistorySinceDate();
+  const totalDays = Math.max(
+    7,
+    Math.ceil((Date.now() - since.getTime()) / (24 * 60 * 60 * 1000)),
+  );
+  const weekCount = Math.max(1, Math.min(TREND_WEEKS, Math.ceil(totalDays / 7)));
   const points: ImprovementTrendPoint[] = [];
 
-  for (let w = 0; w < TREND_WEEKS; w++) {
+  for (let w = 0; w < weekCount; w++) {
     const weekStart = new Date(since);
     weekStart.setDate(weekStart.getDate() + w * 7);
     const weekEnd = new Date(weekStart);
@@ -241,7 +247,7 @@ export function computeImprovementTrend(
       healthScore = snap.healthScore;
       avgSeverity = snap.avgSeverity;
     } else if (compare) {
-      const t = w / (TREND_WEEKS - 1);
+      const t = weekCount <= 1 ? 1 : w / (weekCount - 1);
       const eased = smoothstep(t);
       healthScore = Math.round(
         compare.baseline.healthScore +

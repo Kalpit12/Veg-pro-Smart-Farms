@@ -10,7 +10,6 @@ const adminNav: NavItem[] = [
   { href: "/admin/chemicals", label: "Chemicals", icon: "spray" },
   { href: "/admin/trends", label: "Trends", icon: "trends" },
   { href: "/admin/history", label: "History", icon: "history" },
-  { href: "/admin/approvals", label: "Approvals", icon: "supervisor" },
   { href: "/admin/logs", label: "Activity logs", icon: "logs" },
 ];
 

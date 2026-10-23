@@ -87,6 +87,17 @@ export function GreenhouseImprovementChart({
                 style: { fontSize: 10, fill: "currentColor" },
               }}
             />
+            <YAxis
+              yAxisId="sprays"
+              orientation="right"
+              domain={[0, "auto"]}
+              tickLine={false}
+              axisLine={false}
+              tick={CHART_AXIS_TICK}
+              width={24}
+              allowDecimals={false}
+              offset={44}
+            />
             <Tooltip content={(props) => <VegProChartTooltip {...props} />} />
             <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" />
             <ReferenceLine
@@ -119,6 +130,17 @@ export function GreenhouseImprovementChart({
               stroke="var(--chart-1)"
               strokeWidth={2.5}
               dot={{ r: 3, strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+            />
+            <Line
+              yAxisId="sprays"
+              type="monotone"
+              dataKey="sprays"
+              name="Sprays logged"
+              stroke="#0284c7"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={{ r: 3, strokeWidth: 0, fill: "#0284c7" }}
               activeDot={{ r: 5 }}
             />
           </LineChart>

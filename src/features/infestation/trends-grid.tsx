@@ -24,6 +24,8 @@ import {
   normalizeTrendIssueType,
   resolveTrendGreenhouseName,
   sortGreenhousesBySeverity,
+  trendIssueOptionsForType,
+  trendVarietyOptions,
   trendsCellKey,
   type TrendsArrowState,
   type TrendsCell,
@@ -243,22 +245,43 @@ export function TrendsGrid({
 
   const filterOptions = useMemo(() => {
     const base = collectFilterOptions(sourceRows);
-    const varieties = new Set(base.varieties);
-    for (const crop of cropByGreenhouseId.values()) {
-      if (crop) varieties.add(crop);
-    }
+    const catalogCrops = [...cropByGreenhouseId.values()].filter(Boolean);
+    const issuesByType = {
+      all: trendIssueOptionsForType("all", base.issues),
+      pest: trendIssueOptionsForType(
+        "pest",
+        sourceRows
+          .filter((r) => normalizeTrendIssueType(r.issueType) === "pest")
+          .map((r) => r.issue ?? "")
+          .filter(Boolean),
+      ),
+      disease: trendIssueOptionsForType(
+        "disease",
+        sourceRows
+          .filter((r) => normalizeTrendIssueType(r.issueType) === "disease")
+          .map((r) => r.issue ?? "")
+          .filter(Boolean),
+      ),
+    };
     return {
       ...base,
-      varieties: [...varieties].sort(),
+      issuesByType,
+      varieties: trendVarietyOptions(base.varieties, catalogCrops),
     };
   }, [sourceRows, cropByGreenhouseId]);
 
   // Reset dependent filters when parent changes invalidates them
   useEffect(() => {
-    if (issue !== "all" && !filterOptions.issues.includes(issue)) {
+    const list =
+      issueType === "pest"
+        ? filterOptions.issuesByType.pest
+        : issueType === "disease"
+          ? filterOptions.issuesByType.disease
+          : filterOptions.issuesByType.all;
+    if (issue !== "all" && !list.includes(issue)) {
       setIssue("all");
     }
-  }, [filterOptions.issues, issue]);
+  }, [filterOptions.issuesByType, issue, issueType]);
 
   useEffect(() => {
     if (variety !== "all" && !filterOptions.varieties.includes(variety)) {
@@ -405,16 +428,12 @@ export function TrendsGrid({
           onChange={setIssue}
           options={[
             { value: "all", label: "All issues" },
-            ...filterOptions.issues
-              .filter((name) => {
-                if (issueType === "all") return true;
-                return sourceRows.some(
-                  (r) =>
-                    r.issue === name &&
-                    normalizeTrendIssueType(r.issueType) === issueType,
-                );
-              })
-              .map((name) => ({ value: name, label: name })),
+            ...(issueType === "pest"
+              ? filterOptions.issuesByType.pest
+              : issueType === "disease"
+                ? filterOptions.issuesByType.disease
+                : filterOptions.issuesByType.all
+            ).map((name) => ({ value: name, label: name })),
           ]}
         />
         <FilterSelect
