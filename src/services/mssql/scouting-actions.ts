@@ -24,8 +24,11 @@ export async function mssqlListScoutingRecordsAction(limit?: number) {
   return q.mssqlListScoutingRecords(limit);
 }
 
-export async function mssqlListScoutingRecordsSinceAction(sinceIso: string) {
-  return q.mssqlListScoutingRecordsSince(new Date(sinceIso));
+export async function mssqlListScoutingRecordsSinceAction(
+  sinceIso: string,
+  limit?: number,
+) {
+  return q.mssqlListScoutingRecordsSince(new Date(sinceIso), limit);
 }
 
 export async function mssqlListScoutingForGreenhouseSinceAction(

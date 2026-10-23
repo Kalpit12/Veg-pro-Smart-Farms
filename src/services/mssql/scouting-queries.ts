@@ -390,12 +390,13 @@ export async function mssqlListScoutingRecords(limit = 200) {
   return ok(mapRecordRows(result.recordset));
 }
 
-export async function mssqlListScoutingRecordsSince(since: Date) {
+export async function mssqlListScoutingRecordsSince(since: Date, limit = 800) {
   const session = await requireServerSession();
   const pool = await getMssqlPool();
   const request = pool
     .request()
-    .input("since", sql.DateTime2, bindSqlDateTime2(since));
+    .input("since", sql.DateTime2, bindSqlDateTime2(since))
+    .input("limit", sql.Int, Math.min(Math.max(limit, 1), 2000));
   const scope = await scoutingRecordsScopeClause(session);
   if (scope.bindScout) {
     request.input("scoutId", sql.UniqueIdentifier, session.id);
@@ -404,7 +405,7 @@ export async function mssqlListScoutingRecordsSince(since: Date) {
     ? `${scope.clause} AND r.recorded_at >= @since`
     : "WHERE r.recorded_at >= @since";
   const result = await request.query(`
-    SELECT r.*,
+    SELECT TOP (@limit) r.*,
       f.name AS farm_name, g.name AS greenhouse_name,
       c.name AS category_name, v.name AS variety_name, u.full_name AS scout_name
     FROM dbo.scouting_records r

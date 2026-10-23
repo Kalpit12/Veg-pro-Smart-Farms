@@ -117,10 +117,12 @@ export async function listScoutingRecords(limit = 200) {
     .limit(limit);
 }
 
-export async function listScoutingRecordsSince(since: Date) {
-  if (routeDataThroughMssql()) return mssql.mssqlListScoutingRecordsSinceAction(since.toISOString());
+export async function listScoutingRecordsSince(since: Date, limit = 800) {
+  if (routeDataThroughMssql()) {
+    return mssql.mssqlListScoutingRecordsSinceAction(since.toISOString(), limit);
+  }
   const supabase = createClient();
-  return supabase
+  let q = supabase
     .from("scouting_records")
     .select(
       `*,
@@ -132,6 +134,8 @@ export async function listScoutingRecordsSince(since: Date) {
     )
     .gte("recorded_at", since.toISOString())
     .order("recorded_at", { ascending: false });
+  if (limit > 0) q = q.limit(limit);
+  return q;
 }
 
 export async function listScoutingForGreenhouseSince(

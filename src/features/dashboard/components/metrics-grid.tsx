@@ -27,8 +27,11 @@ export function MetricsGrid({
 }) {
   const { matches } = useManagerDashboardFilterApply(managerDashboardFilters);
   const pollOpts = { enabled: liveUpdates };
-  const scoutingDays = managerDashboardFilters ? 45 : 1;
-  const { records: scoutingRecords } = useScoutingData(scoutingDays, pollOpts);
+  const scoutingDays = managerDashboardFilters ? 14 : 1;
+  const { records: scoutingRecords } = useScoutingData(scoutingDays, {
+    ...pollOpts,
+    recordLimit: managerDashboardFilters ? 400 : 200,
+  });
   const [kpis, setKpis] = useState({
     activeHotspots: 0,
     spraysToday: 0,
@@ -53,7 +56,25 @@ export function MetricsGrid({
     }
 
     try {
-      const next = await getDashboardKpis();
+      let next = {
+        activeHotspots: 0,
+        severeHotspots: 0,
+        spraysToday: 0,
+        workersInField: 0,
+        scoutingStopsToday: 0,
+      };
+      try {
+        next = await getDashboardKpis();
+      } catch (kpiError) {
+        toast({
+          title: "Dashboard metrics slow",
+          description:
+            kpiError instanceof Error
+              ? kpiError.message
+              : "SQL timed out loading KPIs. Showing filtered counts only.",
+          tone: "error",
+        });
+      }
       if (managerDashboardFilters) {
         const [hotRes, sprayRes] = await Promise.all([
           listActiveHotspots(100),

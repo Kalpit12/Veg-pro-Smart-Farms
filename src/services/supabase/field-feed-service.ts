@@ -37,7 +37,7 @@ export async function listFieldFeed(limit = 24): Promise<{
   const [spraysRes, hotspotsRes, scoutingRes, activitiesRes] = await Promise.all([
     listSprays(limit),
     listHotspots(limit),
-    listScoutingRecordsSince(since),
+    listScoutingRecordsSince(since, Math.max(limit * 3, 120)),
     activitiesPromise,
   ]);
 

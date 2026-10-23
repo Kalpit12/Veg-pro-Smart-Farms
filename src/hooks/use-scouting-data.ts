@@ -174,12 +174,16 @@ export function useScoutingRounds(limit = 80, options?: Pick<MssqlPollOptions, "
   };
 }
 
-export function useScoutingData(days = 30, options?: Pick<MssqlPollOptions, "enabled">) {
+export function useScoutingData(
+  days = 30,
+  options?: Pick<MssqlPollOptions, "enabled"> & { recordLimit?: number },
+) {
   const demoRecords = useScoutingStore((s) => s.demoRecords);
   const [remote, setRemote] = useState<UnifiedScoutingRecord[]>([]);
   const [loading, setLoading] = useState(hasConfiguredBackend());
   const initialLoad = useRef(true);
   const poll = options?.enabled ?? true;
+  const recordLimit = options?.recordLimit ?? 800;
 
   const load = useCallback(async () => {
     if (!hasConfiguredBackend()) {
@@ -191,11 +195,11 @@ export function useScoutingData(days = 30, options?: Pick<MssqlPollOptions, "ena
     }
     const since = new Date();
     since.setDate(since.getDate() - days);
-    const { data } = await listScoutingRecordsSince(since);
+    const { data } = await listScoutingRecordsSince(since, recordLimit);
     setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
     setLoading(false);
     initialLoad.current = false;
-  }, [days]);
+  }, [days, recordLimit]);
 
   useEffect(() => {
     void load();
