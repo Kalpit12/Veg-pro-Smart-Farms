@@ -7,6 +7,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/map", label: "Map", icon: "map" },
   { href: "/admin/workforce", label: "Staff", icon: "workers" },
   { href: "/admin/sites", label: "Farms & sites", icon: "home" },
+  { href: "/admin/chemicals", label: "Chemicals", icon: "spray" },
   { href: "/admin/trends", label: "Trends", icon: "trends" },
   { href: "/admin/history", label: "History", icon: "history" },
   { href: "/admin/approvals", label: "Approvals", icon: "supervisor" },

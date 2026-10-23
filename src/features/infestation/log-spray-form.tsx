@@ -21,10 +21,12 @@ import {
   listActiveHotspotsForGreenhouse,
   updateHotspotAfterSpray,
 } from "@/services/supabase/infestation-service";
+import { listChemicalProductsForSpray } from "@/services/supabase/chemicals-service";
 import { logSpray } from "@/services/supabase/spray-service";
+import { ChemicalProductPicker } from "@/components/chemical-product-picker";
 
 const schema = z.object({
-  product_name: z.string().min(2, "Enter product name"),
+  product_name: z.string().min(2, "Select an insecticide product"),
   notes: z.string().optional(),
   hotspot_id: z.string().optional(),
   severity_after: z.number().int().min(1).max(5).optional(),
@@ -55,6 +57,10 @@ export function LogSprayForm({
   const [submitting, setSubmitting] = useState(false);
   const [gpsLabel, setGpsLabel] = useState("Will capture on submit");
   const [hotspots, setHotspots] = useState<SprayHotspotOption[]>([]);
+  const [chemicals, setChemicals] = useState<
+    { id: string; name: string; active_ingredient: string | null }[]
+  >([]);
+  const [chemicalsLoading, setChemicalsLoading] = useState(true);
   const { toast } = useToast();
   const scan = useScanStore();
   const resumeHotspot = useResumeHotspotStore((s) => s.hotspot);
@@ -72,6 +78,23 @@ export function LogSprayForm({
       severity_after: undefined,
     },
   });
+
+  useEffect(() => {
+    if (isOfflineDemo()) {
+      setChemicals([
+        { id: "demo-1", name: "Neem oil", active_ingredient: null },
+        { id: "demo-2", name: "Spinosad", active_ingredient: "Spinosad A+D" },
+        { id: "demo-3", name: "Bacillus subtilis", active_ingredient: null },
+      ]);
+      setChemicalsLoading(false);
+      return;
+    }
+    setChemicalsLoading(true);
+    void listChemicalProductsForSpray().then(({ data, error }) => {
+      if (!error && data) setChemicals(data);
+      setChemicalsLoading(false);
+    });
+  }, []);
 
   useEffect(() => {
     if (isOfflineDemo()) {
@@ -511,14 +534,28 @@ export function LogSprayForm({
         </fieldset>
       ) : null}
 
-      <label className="block space-y-1">
+      <div className="space-y-1">
         <span className="text-sm font-medium">Insecticide product</span>
-        <input
-          className="w-full rounded-xl border border-border bg-background px-3 py-3 text-base"
-          placeholder="e.g. Neem oil"
-          {...form.register("product_name")}
-        />
-      </label>
+        {chemicalsLoading ? (
+          <p className="text-sm text-muted-foreground">Loading products…</p>
+        ) : chemicals.length ? (
+          <ChemicalProductPicker
+            value={form.watch("product_name")}
+            options={chemicals}
+            onChange={(name) =>
+              form.setValue("product_name", name, { shouldValidate: true })
+            }
+          />
+        ) : (
+          <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+            No insecticide products yet. Ask an admin to upload the chemical list under Admin →
+            Chemicals.
+          </p>
+        )}
+        {form.formState.errors.product_name ? (
+          <p className="text-sm text-destructive">{form.formState.errors.product_name.message}</p>
+        ) : null}
+      </div>
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Notes (optional)</span>
@@ -530,7 +567,12 @@ export function LogSprayForm({
 
       <p className="text-xs text-muted-foreground">GPS: {gpsLabel}</p>
 
-      <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+      <Button
+        type="submit"
+        size="lg"
+        className="w-full"
+        disabled={submitting || chemicalsLoading || !chemicals.length}
+      >
         {submitting ? "Saving…" : "Log spray"}
       </Button>
     </form>

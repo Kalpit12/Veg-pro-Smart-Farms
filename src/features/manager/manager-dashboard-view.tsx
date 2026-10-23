@@ -4,7 +4,6 @@ import { ActivityChart } from "@/features/dashboard/components/activity-chart";
 import { AdminDailyAnalytics } from "@/features/dashboard/components/admin-daily-analytics";
 import { YesterdayScoutedGreenhouses } from "@/features/dashboard/components/yesterday-scouted-greenhouses";
 import { LiveActivityFeed } from "@/features/dashboard/components/live-activity-feed";
-import { ManagerQuickActions } from "@/features/dashboard/components/manager-quick-actions";
 import { MetricsGrid } from "@/features/dashboard/components/metrics-grid";
 import { OperationsAlerts } from "@/features/dashboard/components/operations-alerts";
 import { PendingInfestationQueue } from "@/features/infestation/pending-infestation-queue";
@@ -32,7 +31,6 @@ export function ManagerDashboardView() {
         />
       </div>
       <AdminDailyAnalytics section="houses" />
-      <ManagerQuickActions />
     </section>
   );
 }
