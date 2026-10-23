@@ -190,7 +190,7 @@ export function MetricsGrid({
 
   const adminCards = [
     {
-      label: "Scouting",
+      label: "Scouting rounds",
       value: String(demoScoutingToday),
       icon: ClipboardList,
       tone: demoScoutingToday > 0 ? ("success" as const) : ("default" as const),
@@ -205,13 +205,16 @@ export function MetricsGrid({
       href: historyHref,
     },
     {
-      label: "Workers",
+      label: "Active workers",
       value: String(kpis.workersInField),
       icon: Users,
       tone: "default" as const,
       href: workforceHref,
     },
-    managerCards[1],
+    {
+      ...managerCards[1],
+      label: "Urgent attention",
+    },
   ];
 
   const cards = audience === "admin" ? adminCards : managerCards;

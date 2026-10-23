@@ -16,9 +16,14 @@ import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-fi
 import { cn } from "@/lib/utils";
 
 function priorityBadge(p: SprayPriority) {
-  if (p === "urgent") return { variant: "danger" as const, label: "Spray today", Icon: AlertTriangle };
-  if (p === "scheduled") return { variant: "warning" as const, label: "Within 48h", Icon: Calendar };
+  if (p === "urgent") return { variant: "danger" as const, label: "Urgent", Icon: AlertTriangle };
+  if (p === "scheduled") return { variant: "warning" as const, label: "Soon", Icon: Calendar };
   return { variant: "outline" as const, label: "Watch", Icon: Eye };
+}
+
+function maxSeverity(items: { rating: number }[]) {
+  if (!items.length) return null;
+  return Math.max(...items.map((i) => i.rating));
 }
 
 export function SprayWorkProgramPanel({
@@ -53,6 +58,8 @@ export function SprayWorkProgramPanel({
   }, [records, resolutionHotspots, managerDashboardFilters, matches]);
   const urgent = program.filter((p) => p.priority === "urgent");
   const scheduled = program.filter((p) => p.priority === "scheduled");
+  const urgentMax = maxSeverity(urgent);
+  const soonMax = maxSeverity(scheduled);
   const exportRows = sprayProgramToExcel(program);
 
   if (loading) {
@@ -63,9 +70,11 @@ export function SprayWorkProgramPanel({
     <section className={cn("space-y-4", !compact && "glass-card rounded-2xl p-4")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Sprays today</h2>
+          <h2 className="text-lg font-semibold">Sprays action required</h2>
           {!compact ? (
-            <p className="text-sm text-muted-foreground">From scouting.</p>
+            <p className="text-sm text-muted-foreground">
+              From scouting pressure — urgent and soon items by severity.
+            </p>
           ) : null}
         </div>
         {!compact ? (
@@ -90,11 +99,17 @@ export function SprayWorkProgramPanel({
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3">
           <p className="text-2xl font-semibold tabular-nums text-red-600">{urgent.length}</p>
-          <p className="text-xs text-muted-foreground">Urgent</p>
+          <p className="text-xs text-muted-foreground">
+            Urgent
+            {urgentMax != null ? ` · severity up to ${urgentMax}/5` : ""}
+          </p>
         </div>
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
           <p className="text-2xl font-semibold tabular-nums text-amber-600">{scheduled.length}</p>
-          <p className="text-xs text-muted-foreground">Soon</p>
+          <p className="text-xs text-muted-foreground">
+            Soon
+            {soonMax != null ? ` · severity up to ${soonMax}/5` : ""}
+          </p>
         </div>
         <div className="rounded-xl border border-border bg-muted/30 p-3">
           <p className="text-2xl font-semibold tabular-nums">{program.length}</p>
@@ -104,7 +119,7 @@ export function SprayWorkProgramPanel({
 
       {program.length === 0 ? (
         <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          No sprays needed today. Resolved hotspots are cleared from this list.
+          No spray actions required. Resolved issues are cleared from this list.
         </p>
       ) : (
         <ul className="space-y-2">
@@ -116,14 +131,19 @@ export function SprayWorkProgramPanel({
                 key={item.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/80 bg-background/60 px-4 py-3"
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  <Icon className="size-4 shrink-0 text-muted-foreground" />
-                  <p className="text-sm font-medium">
-                    {item.greenhouse} · {item.issue} · {badge.label}
-                  </p>
+                <div className="flex min-w-0 items-start gap-2">
+                  <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {item.greenhouse} · {item.issue}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {badge.label} · severity {item.rating}/5
+                    </p>
+                  </div>
                 </div>
                 <Badge variant={badge.variant} className="shrink-0">
-                  {item.rating}/5
+                  {badge.label}
                 </Badge>
               </li>
             );
