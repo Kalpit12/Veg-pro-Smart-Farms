@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { MapPin, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
@@ -54,7 +55,7 @@ export function SupervisorPanel({
         {
           id: "demo-sub-1",
           activity_type: "Irrigation",
-          created_at: new Date().toISOString(),
+          created_at: kenyaNowIso(),
           notes: "Scouting stop submitted for STGH01A.",
           users: { full_name: "Ravi" },
           farms: { name: "Star" },

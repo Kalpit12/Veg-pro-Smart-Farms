@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 
+import { bindSqlDateTime2, SQL_KENYA_NOW } from "@/lib/mssql/datetime";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
 import { requireServerSession } from "@/lib/mssql/session-server";
@@ -159,7 +160,7 @@ async function listHotspotsQuery(where: string, params: Record<string, unknown>,
     const pool = await getMssqlPool();
     const req = pool.request().input("limit", sql.Int, limit);
     for (const [k, v] of Object.entries(params)) {
-      if (v instanceof Date) req.input(k, sql.DateTime2, v);
+      if (v instanceof Date) req.input(k, sql.DateTime2, bindSqlDateTime2(v));
       else if (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v))
         req.input(k, sql.UniqueIdentifier, v);
       else req.input(k, sql.NVarChar(200), String(v));
@@ -339,7 +340,7 @@ export async function mssqlGetHotspotKpis() {
       ),
     pool
       .request()
-      .input("since", sql.DateTime2, today)
+      .input("since", sql.DateTime2, bindSqlDateTime2(today))
       .query(
         `SELECT COUNT(*) AS c FROM dbo.infestation_hotspots WHERE status = 'resolved' AND created_at >= @since${scope}`,
       ),
@@ -428,7 +429,7 @@ export async function mssqlGetSpraysTodayCount() {
   today.setHours(0, 0, 0, 0);
   const result = await pool
     .request()
-    .input("since", sql.DateTime2, today)
+    .input("since", sql.DateTime2, bindSqlDateTime2(today))
     .query(`SELECT COUNT(*) AS c FROM dbo.spray_treatments WHERE created_at >= @since`);
   return ok({ count: result.recordset[0].c as number });
 }
@@ -448,7 +449,7 @@ export async function mssqlUpsertWorkerPosition(
     .query(`
       MERGE dbo.worker_positions AS t
       USING (SELECT @worker_id AS worker_id) AS s ON t.worker_id = s.worker_id
-      WHEN MATCHED THEN UPDATE SET latitude = @latitude, longitude = @longitude, updated_at = SYSUTCDATETIME()
+      WHEN MATCHED THEN UPDATE SET latitude = @latitude, longitude = @longitude, updated_at = ${SQL_KENYA_NOW}
       WHEN NOT MATCHED THEN INSERT (worker_id, latitude, longitude) VALUES (@worker_id, @latitude, @longitude);
     `);
   return ok({ worker_id: workerId, latitude, longitude });
@@ -481,7 +482,7 @@ export async function mssqlGetWorkersInFieldCount() {
   const since = new Date(Date.now() - 1000 * 60 * 30);
   const result = await pool
     .request()
-    .input("since", sql.DateTime2, since)
+    .input("since", sql.DateTime2, bindSqlDateTime2(since))
     .query(`SELECT COUNT(*) AS c FROM dbo.worker_positions WHERE updated_at >= @since`);
   return ok({ count: result.recordset[0].c as number });
 }
@@ -614,16 +615,16 @@ export async function mssqlGetWeeklyTrendsRaw() {
   const since = new Date();
   since.setDate(since.getDate() - 6);
   since.setHours(0, 0, 0, 0);
-  const req = pool.request().input("since", sql.DateTime2, since);
+  const req = pool.request().input("since", sql.DateTime2, bindSqlDateTime2(since));
   const [reports, sprays, scouting] = await Promise.all([
     req.query(`SELECT created_at FROM dbo.infestation_hotspots WHERE created_at >= @since`),
     pool
       .request()
-      .input("since", sql.DateTime2, since)
+      .input("since", sql.DateTime2, bindSqlDateTime2(since))
       .query(`SELECT created_at FROM dbo.spray_treatments WHERE created_at >= @since`),
     pool
       .request()
-      .input("since", sql.DateTime2, since)
+      .input("since", sql.DateTime2, bindSqlDateTime2(since))
       .query(`SELECT recorded_at FROM dbo.scouting_records WHERE recorded_at >= @since`),
   ]);
   return ok({
@@ -647,7 +648,7 @@ export async function mssqlGetAdminDailyAnalyticsRaw() {
       ),
     pool
       .request()
-      .input("since", sql.DateTime2, since)
+      .input("since", sql.DateTime2, bindSqlDateTime2(since))
       .query(`
         SELECT r.issue_type, g.name AS greenhouse_name
         FROM dbo.scouting_records r
@@ -671,7 +672,9 @@ async function mssqlCountOrZero(query: string, params?: { since?: Date }): Promi
   try {
     const pool = await getMssqlPool();
     const req = pool.request();
-    if (params?.since) req.input("since", sql.DateTime2, params.since);
+    if (params?.since) {
+      req.input("since", sql.DateTime2, bindSqlDateTime2(params.since as Date));
+    }
     const result = await req.query(query);
     return result.recordset[0].c as number;
   } catch {

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { kenyaNowIso } from "@/lib/kenya-time";
 import {
   seedStarFlowAlerts,
   seedStarFlowHotspots,
@@ -99,7 +100,7 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
               main_issue: input.main_issue,
               severity: input.severity,
               status: "active",
-              created_at: new Date().toISOString(),
+              created_at: kenyaNowIso(),
               farms: { name: input.farmName },
               greenhouses: { name: input.greenhouseName },
               users: { full_name: input.scoutName ?? "Field worker" },
@@ -111,7 +112,7 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
               id: `demo-alert-${Date.now()}`,
               type: "infestation",
               message: `New ${input.pest_type} report at ${input.greenhouseName} — log spray response.`,
-              created_at: new Date().toISOString(),
+              created_at: kenyaNowIso(),
             },
             ...s.demoAlerts,
           ],
@@ -145,7 +146,7 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
               notes: input.notes ?? null,
               severity_before: input.severity_before ?? null,
               severity_after: input.severity_after ?? null,
-              created_at: new Date().toISOString(),
+              created_at: kenyaNowIso(),
               users: { full_name: input.workerName ?? "Field worker" },
               farms: { name: input.farmName },
               greenhouses: { name: input.greenhouseName },
@@ -160,7 +161,7 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
               id: `demo-alert-${Date.now()}`,
               type,
               message,
-              created_at: new Date().toISOString(),
+              created_at: kenyaNowIso(),
             },
             ...s.demoAlerts,
           ],
@@ -180,7 +181,7 @@ export const useFieldOpsStore = create<FieldOpsStore>()(
 export function getDemoWorkerPositions() {
   const gh01 = bemackLocationByName("STGH01A")!;
   const gh05 = bemackLocationByName("STGH05A")!;
-  const now = new Date().toISOString();
+  const now = kenyaNowIso();
   return [
     {
       worker_id: "demo-worker-1",

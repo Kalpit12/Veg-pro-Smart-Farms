@@ -1,3 +1,5 @@
+import { formatKenyaOffsetIso } from "@/lib/kenya-time";
+
 export type GpsCoords = { latitude: number; longitude: number };
 
 export type GpsPositionSample = GpsCoords & {
@@ -143,7 +145,7 @@ export function watchScoutingPosition(
         typeof position.coords.accuracy === "number" && Number.isFinite(position.coords.accuracy)
           ? position.coords.accuracy
           : null,
-      recordedAt: new Date(position.timestamp || Date.now()).toISOString(),
+      recordedAt: formatKenyaOffsetIso(new Date(position.timestamp || Date.now())),
     };
 
     // Hold steady against micro-jitter before higher-level filters run

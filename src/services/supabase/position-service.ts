@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import * as mssql from "@/services/mssql/ops-actions";
@@ -31,7 +32,7 @@ export async function upsertWorkerPosition(
       worker_id: workerId,
       latitude,
       longitude,
-      updated_at: new Date().toISOString(),
+      updated_at: kenyaNowIso(),
     })
     .select()
     .single();

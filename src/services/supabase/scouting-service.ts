@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import type { ScoutingIssueType, ScoutingRecord } from "@/types/db";
@@ -62,7 +63,7 @@ export async function createScoutingRecord(input: CreateScoutingRecordInput) {
   const { observations, ...record } = input;
   const insertRow = {
     ...record,
-    recorded_at: record.recorded_at ?? new Date().toISOString(),
+    recorded_at: record.recorded_at ?? kenyaNowIso(),
   };
 
   const { data: row, error } = await supabase

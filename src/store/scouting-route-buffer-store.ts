@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -41,7 +42,7 @@ export const useScoutingRouteBufferStore = create<ScoutingRouteBufferStore>()(
       points: [],
       lastRejectReason: null,
       addPoint: (input) => {
-        const recordedAt = input.recordedAt ?? new Date().toISOString();
+        const recordedAt = input.recordedAt ?? kenyaNowIso();
         const existing = get()
           .points.filter((p) => p.roundId === input.roundId)
           .sort(

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 
+import { SQL_KENYA_NOW } from "@/lib/mssql/datetime";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
@@ -77,7 +78,7 @@ export async function mssqlUpsertChemical(input: {
         SET name = @name,
             active_ingredient = @ai,
             is_active = 1,
-            updated_at = SYSUTCDATETIME()
+            updated_at = ${SQL_KENYA_NOW}
         WHERE id = @id
       `);
     return ok({ id, updated: true as const });
@@ -121,7 +122,7 @@ export async function mssqlDeactivateChemical(id: string) {
     .input("id", sql.UniqueIdentifier, id)
     .query(`
       UPDATE dbo.chemicals
-      SET is_active = 0, updated_at = SYSUTCDATETIME()
+      SET is_active = 0, updated_at = ${SQL_KENYA_NOW}
       WHERE id = @id
     `);
   return ok(true);

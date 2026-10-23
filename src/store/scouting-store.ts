@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -122,7 +123,7 @@ export const useScoutingStore = create<ScoutingStore>()(
                 ...record,
                 roundId: record.roundId ?? activeId,
                 id: `demo-scout-${Date.now()}`,
-                recordedAt: record.recordedAt ?? new Date().toISOString(),
+                recordedAt: record.recordedAt ?? kenyaNowIso(),
               },
               ...s.demoRecords,
             ],
@@ -146,7 +147,7 @@ export const useScoutingStore = create<ScoutingStore>()(
             {
               ...round,
               id,
-              startedAt: new Date().toISOString(),
+              startedAt: kenyaNowIso(),
               status: "active",
               stopCount: 0,
               distanceM: 0,
@@ -167,7 +168,7 @@ export const useScoutingStore = create<ScoutingStore>()(
               ? {
                   ...r,
                   status: "completed" as const,
-                  endedAt: new Date().toISOString(),
+                  endedAt: kenyaNowIso(),
                   distanceM: metrics?.distanceM ?? r.distanceM ?? 0,
                   durationS: metrics?.durationS ?? r.durationS ?? null,
                   pointCount: metrics?.pointCount ?? r.pointCount ?? 0,

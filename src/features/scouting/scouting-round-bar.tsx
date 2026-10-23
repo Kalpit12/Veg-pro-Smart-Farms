@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { MapPin, Play, Square, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -254,7 +255,7 @@ export function ScoutingRoundBar() {
         farmName: scan.farmName ?? "Farm",
         greenhouseId: scan.greenhouseId!,
         greenhouseName: scan.greenhouseName ?? "Greenhouse",
-        startedAt: new Date().toISOString(),
+        startedAt: kenyaNowIso(),
         stopCount: 0,
       });
       engageWalk();
@@ -278,7 +279,7 @@ export function ScoutingRoundBar() {
 
       if (offline) {
         const localId = crypto.randomUUID();
-        const startedAt = new Date().toISOString();
+        const startedAt = kenyaNowIso();
         enqueueRoundStart({
           id: localId,
           scout_id: user.id,
@@ -336,7 +337,7 @@ export function ScoutingRoundBar() {
       if (error) {
         if (isLikelyOfflineError(error)) {
           const localId = crypto.randomUUID();
-          const startedAt = new Date().toISOString();
+          const startedAt = kenyaNowIso();
           enqueueRoundStart({
             id: localId,
             scout_id: user.id,

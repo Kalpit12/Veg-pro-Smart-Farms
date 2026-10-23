@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 
 import { roundQualityFlags, type WorkerHistoryEvent } from "@/lib/worker-trends";
+import { bindSqlDateTime2 } from "@/lib/mssql/datetime";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
@@ -111,7 +112,7 @@ export async function mssqlListWorkerTrendsSince(since: Date) {
     const [hotspots, sprays, scouting, rounds] = await Promise.all([
       pool
         .request()
-        .input("since", sql.DateTime2, since)
+        .input("since", sql.DateTime2, bindSqlDateTime2(since))
         .query(`
         SELECT h.id, h.reported_by, h.pest_type, h.problem, h.main_issue, h.severity, h.status,
                h.created_at, h.greenhouse_id, g.name AS greenhouse_name, f.name AS farm_name,
@@ -125,7 +126,7 @@ export async function mssqlListWorkerTrendsSince(since: Date) {
       `),
       pool
         .request()
-        .input("since", sql.DateTime2, since)
+        .input("since", sql.DateTime2, bindSqlDateTime2(since))
         .query(`
         SELECT s.id, s.worker_id, s.product_name, s.created_at, s.greenhouse_id,
                g.name AS greenhouse_name, f.name AS farm_name, u.full_name AS worker_name
@@ -138,7 +139,7 @@ export async function mssqlListWorkerTrendsSince(since: Date) {
       `),
       pool
         .request()
-        .input("since", sql.DateTime2, since)
+        .input("since", sql.DateTime2, bindSqlDateTime2(since))
         .query(`
         SELECT r.id, r.scout_id, r.issue_type, r.issue_name, r.rating, r.recorded_at, r.greenhouse_id,
                g.name AS greenhouse_name, f.name AS farm_name, u.full_name AS scout_name
@@ -151,7 +152,7 @@ export async function mssqlListWorkerTrendsSince(since: Date) {
       `),
       pool
         .request()
-        .input("since", sql.DateTime2, since)
+        .input("since", sql.DateTime2, bindSqlDateTime2(since))
         .query(`
         SELECT r.id, r.scout_id, r.greenhouse_id, r.status, r.started_at, r.ended_at, r.stop_count,
                r.distance_m, r.duration_s, r.point_count, r.coverage_pct,

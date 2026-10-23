@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -91,7 +92,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
       items: [],
       enqueueScout: (payload, options) => {
         const id = newId();
-        const createdAt = new Date().toISOString();
+        const createdAt = kenyaNowIso();
         set((s) => ({
           items: [
             ...s.items,
@@ -117,7 +118,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
             {
               id: newId(),
               kind: "infestation",
-              createdAt: new Date().toISOString(),
+              createdAt: kenyaNowIso(),
               payload,
             },
           ],
@@ -130,7 +131,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
             {
               id,
               kind: "spray",
-              createdAt: new Date().toISOString(),
+              createdAt: kenyaNowIso(),
               payload: {
                 ...payload,
                 image_url: options?.pendingPhoto ? null : payload.image_url ?? null,
@@ -150,7 +151,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
             {
               id: newId(),
               kind: "round_start",
-              createdAt: new Date().toISOString(),
+              createdAt: kenyaNowIso(),
               payload,
             },
           ],
@@ -162,7 +163,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
             {
               id: newId(),
               kind: "round_finish",
-              createdAt: new Date().toISOString(),
+              createdAt: kenyaNowIso(),
               payload,
             },
           ],

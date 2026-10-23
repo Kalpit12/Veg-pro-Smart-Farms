@@ -7,7 +7,9 @@ import {
 } from "@/lib/bemack-master-data";
 import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
 import { isNoIssueMarker, pestCountToSeverity } from "@/lib/plant-zones";
+import { bindSqlDateTime2 } from "@/lib/mssql/datetime";
 import { fail, ok, toIso } from "@/lib/mssql/result";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
 import { requireServerSession, type ServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
@@ -215,7 +217,7 @@ async function insertScoutingRecordRow(
   const pool = await getMssqlPool();
   await ensureScoutingParametersSeeded(pool);
   const recordId = randomUUID();
-  const recordedAt = input.recorded_at ?? new Date().toISOString();
+  const recordedAt = input.recorded_at ?? kenyaNowIso();
   const roundId = await resolveRoundIdForInsert(pool, input.round_id);
 
   try {
@@ -253,7 +255,7 @@ async function insertScoutingRecordRow(
       .input("longitude", sql.Float, input.longitude ?? null)
       .input("notes", sql.NVarChar(sql.MAX), input.notes ?? null)
       .input("image_url", sql.NVarChar(1000), input.image_url ?? null)
-      .input("recorded_at", sql.DateTime2, new Date(recordedAt));
+      .input("recorded_at", sql.DateTime2, bindSqlDateTime2(recordedAt));
 
     if (roundId) {
       insertReq.input("round_id", sql.UniqueIdentifier, roundId);
@@ -393,7 +395,7 @@ export async function mssqlListScoutingRecordsSince(since: Date) {
   const pool = await getMssqlPool();
   const request = pool
     .request()
-    .input("since", sql.DateTime2, since);
+    .input("since", sql.DateTime2, bindSqlDateTime2(since));
   const scope = await scoutingRecordsScopeClause(session);
   if (scope.bindScout) {
     request.input("scoutId", sql.UniqueIdentifier, session.id);
@@ -422,7 +424,7 @@ export async function mssqlListScoutingForGreenhouseSince(greenhouseId: string, 
   const result = await pool
     .request()
     .input("gh", sql.UniqueIdentifier, greenhouseId)
-    .input("since", sql.DateTime2, since)
+    .input("since", sql.DateTime2, bindSqlDateTime2(since))
     .query(`
       SELECT r.id, r.latitude, r.longitude, r.issue_name, r.recorded_at, u.full_name AS scout_name
       FROM dbo.scouting_records r
@@ -447,7 +449,7 @@ export async function mssqlGetScoutingPressureByGreenhouse(since?: Date) {
   const request = pool.request();
   let where = "WHERE r.rating IS NOT NULL AND r.issue_name IS NOT NULL AND LOWER(r.issue_name) <> 'none found'";
   if (since) {
-    request.input("since", sql.DateTime2, since);
+    request.input("since", sql.DateTime2, bindSqlDateTime2(since));
     where += " AND r.recorded_at >= @since";
   }
   const result = await request.query(`
@@ -540,14 +542,14 @@ export async function mssqlStartScoutingRound(input: {
 
   const pool = await getMssqlPool();
   const id = input.id ?? randomUUID();
-  const started = input.started_at ? new Date(input.started_at) : new Date();
+  const startedAt = input.started_at ?? kenyaNowIso();
   await pool
     .request()
     .input("id", sql.UniqueIdentifier, id)
     .input("scout_id", sql.UniqueIdentifier, input.scout_id)
     .input("farm_id", sql.UniqueIdentifier, input.farm_id)
     .input("greenhouse_id", sql.UniqueIdentifier, input.greenhouse_id)
-    .input("started_at", sql.DateTime2, started)
+    .input("started_at", sql.DateTime2, bindSqlDateTime2(startedAt))
     .query(`
       INSERT INTO dbo.scouting_rounds (id, scout_id, farm_id, greenhouse_id, status, started_at)
       VALUES (@id, @scout_id, @farm_id, @greenhouse_id, 'active', @started_at)
@@ -565,7 +567,7 @@ export async function mssqlCompleteScoutingRound(roundId: string) {
   await pool
     .request()
     .input("id", sql.UniqueIdentifier, roundId)
-    .input("ended", sql.DateTime2, new Date())
+    .input("ended", sql.DateTime2, bindSqlDateTime2(kenyaNowIso()))
     .query(`
       UPDATE dbo.scouting_rounds SET status = 'completed', ended_at = @ended WHERE id = @id
     `);
@@ -608,8 +610,8 @@ export async function mssqlListScoutingRoundsBetween(from: Date, to: Date, limit
   const pool = await getMssqlPool();
   const result = await pool
     .request()
-    .input("from", sql.DateTime2, from)
-    .input("to", sql.DateTime2, to)
+    .input("from", sql.DateTime2, bindSqlDateTime2(from))
+    .input("to", sql.DateTime2, bindSqlDateTime2(to))
     .input("limit", sql.Int, limit)
     .query(`
       SELECT TOP (@limit) r.*, u.full_name AS scout_name, g.name AS greenhouse_name, f.name AS farm_name
@@ -656,7 +658,11 @@ export async function mssqlAppendRoutePoints(roundId: string, points: RoutePoint
       .input("lat", sql.Float, p.latitude)
       .input("lng", sql.Float, p.longitude)
       .input("acc", sql.Decimal(8, 2), p.accuracy_m ?? null)
-      .input("recorded_at", sql.DateTime2, p.recorded_at ? new Date(p.recorded_at) : new Date())
+      .input(
+        "recorded_at",
+        sql.DateTime2,
+        bindSqlDateTime2(p.recorded_at ?? kenyaNowIso()),
+      )
       .query(`
         INSERT INTO dbo.scouting_route_points (id, round_id, latitude, longitude, accuracy_m, recorded_at)
         VALUES (@id, @round_id, @lat, @lng, @acc, @recorded_at)
@@ -734,11 +740,11 @@ export async function mssqlFinalizeRoundMetrics(
 
   const pointsRes = await mssqlListRoutePoints(roundId);
   const points = pointsRes.data ?? [];
-  const endedAt = new Date();
+  const endedAtIso = kenyaNowIso();
   const distance_m = distanceBetweenPoints(
     points.map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
   );
-  const duration_s = durationSeconds(toIso(round.started_at), endedAt.toISOString());
+  const duration_s = durationSeconds(toIso(round.started_at), endedAtIso);
 
   await pool
     .request()
@@ -747,7 +753,7 @@ export async function mssqlFinalizeRoundMetrics(
     .input("duration_s", sql.Int, duration_s)
     .input("point_count", sql.Int, points.length)
     .input("coverage_pct", sql.Decimal(5, 2), options?.coveragePct ?? round.coverage_pct)
-    .input("ended_at", sql.DateTime2, endedAt)
+    .input("ended_at", sql.DateTime2, bindSqlDateTime2(endedAtIso))
     .query(`
       UPDATE dbo.scouting_rounds SET
         status = 'completed', ended_at = @ended_at,
@@ -838,7 +844,7 @@ export async function mssqlMirrorFieldLineToScouting(
       latitude: mirror.latitude,
       longitude: mirror.longitude,
       notes: noteParts.length ? noteParts.join(" · ") : null,
-      recorded_at: mirror.recordedAt ?? new Date().toISOString(),
+      recorded_at: mirror.recordedAt ?? kenyaNowIso(),
       image_url: null,
       observations,
     },

@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import { isUuid } from "@/lib/uuid";
@@ -60,7 +61,7 @@ export async function startScoutingRound(input: {
     status: "active",
   };
   if (input.id) row.id = input.id;
-  if (input.started_at) row.started_at = input.started_at;
+  row.started_at = input.started_at ?? kenyaNowIso();
 
   return supabase.from("scouting_rounds").insert(row).select().single();
 }
@@ -70,7 +71,7 @@ export async function completeScoutingRound(roundId: string) {
   const supabase = createClient();
   return supabase
     .from("scouting_rounds")
-    .update({ status: "completed", ended_at: new Date().toISOString() })
+    .update({ status: "completed", ended_at: kenyaNowIso() })
     .eq("id", roundId)
     .select()
     .single();

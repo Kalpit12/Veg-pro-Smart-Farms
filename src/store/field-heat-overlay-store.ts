@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { create } from "zustand";
 
 import type { ScoutingIssueType } from "@/types/db";
@@ -36,7 +37,7 @@ export const useFieldHeatOverlayStore = create<FieldHeatOverlayStore>((set) => (
         {
           ...entry,
           id: `heat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          recordedAt: entry.recordedAt ?? new Date().toISOString(),
+          recordedAt: entry.recordedAt ?? kenyaNowIso(),
         },
       ],
     })),

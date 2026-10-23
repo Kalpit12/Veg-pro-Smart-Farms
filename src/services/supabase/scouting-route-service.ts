@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { routeDataThroughMssql } from "@/lib/mssql/client-routing";
 import { createClient } from "@/lib/supabase/client";
 import { distanceBetweenPoints, durationSeconds } from "@/lib/route-metrics";
@@ -24,7 +25,7 @@ export async function appendRoutePoints(roundId: string, points: RoutePointInput
     latitude: p.latitude,
     longitude: p.longitude,
     accuracy_m: p.accuracy_m ?? null,
-    recorded_at: p.recorded_at ?? new Date().toISOString(),
+    recorded_at: p.recorded_at ?? kenyaNowIso(),
   }));
 
   const { data, error } = await supabase
@@ -99,7 +100,7 @@ export async function finalizeRoundMetrics(
   const { data: points, error: pointsError } = await listRoutePoints(roundId);
   if (pointsError) return { data: null, error: pointsError };
 
-  const endedAt = new Date().toISOString();
+  const endedAt = kenyaNowIso();
   const distance_m = distanceBetweenPoints(
     (points as ScoutingRoutePoint[] | null)?.map((p) => ({
       latitude: p.latitude,

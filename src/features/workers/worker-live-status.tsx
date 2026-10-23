@@ -6,6 +6,7 @@ import { MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DEMO_FARMS, DEMO_WORKERS } from "@/lib/demo-field-data";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useRealtimeHotspots } from "@/hooks/use-realtime-hotspots";
 import { useRealtimePositions } from "@/hooks/use-realtime-positions";
@@ -42,7 +43,7 @@ export function WorkerLiveStatus() {
         greenhouse: farm.greenhouseName,
         problem: worker.problem,
         gps: `${farm.lat.toFixed(4)},${farm.lng.toFixed(4)}`,
-        at: new Date().toISOString(),
+        at: kenyaNowIso(),
       });
       setLoading(false);
       return;

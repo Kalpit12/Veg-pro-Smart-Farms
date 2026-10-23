@@ -6,6 +6,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button } from "@/components/ui/button";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { useToast } from "@/hooks/use-toast";
 import {
   BEMACK_CATEGORIES,
@@ -229,7 +230,7 @@ export function ScoutingStopForm({
 
         setSubmitting(true);
         try {
-          const capturedAt = new Date().toISOString();
+          const capturedAt = kenyaNowIso();
           const live = await captureGps({
             allowDemoFallback: isOfflineDemo(),
             anchorFallback: gpsAnchorForFieldWork(resumeHotspot, location.greenhouseId),

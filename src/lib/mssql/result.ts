@@ -1,3 +1,5 @@
+import { toAppDateTimeIso } from "@/lib/kenya-time";
+
 export type ServiceError = { message: string };
 
 export function ok<T>(data: T) {
@@ -9,7 +11,5 @@ export function fail(message: string) {
 }
 
 export function toIso(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "string") return value;
-  return String(value ?? "");
+  return toAppDateTimeIso(value);
 }

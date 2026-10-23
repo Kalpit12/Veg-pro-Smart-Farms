@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { captureGps, formatGps } from "@/lib/gps";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { gpsAnchorForFieldWork } from "@/lib/hotspot-gps";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { useFieldOpsStore } from "@/store/field-ops-store";
@@ -172,7 +173,7 @@ export function LogSprayForm({
       greenhouse_name: hotspot.greenhouses?.name ?? "—",
       farm_id: hotspot.farm_id,
       farm_name: hotspot.farms?.name ?? "Star",
-      created_at: new Date().toISOString(),
+      created_at: kenyaNowIso(),
     });
     useScanStore.getState().setContext({
       farmId: hotspot.farm_id,

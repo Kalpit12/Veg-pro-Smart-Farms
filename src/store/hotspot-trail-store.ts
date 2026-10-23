@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -27,7 +28,7 @@ export const useHotspotTrailStore = create<HotspotTrailStore>()(
     (set, get) => ({
       breadcrumbs: {},
       addBreadcrumb: (hotspotId, latitude, longitude) => {
-        const now = new Date().toISOString();
+        const now = kenyaNowIso();
         const nextPoint = { id: `gps-${Date.now()}`, latitude, longitude, created_at: now };
         set((state) => {
           const prev = state.breadcrumbs[hotspotId] ?? [];

@@ -1,3 +1,4 @@
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -22,7 +23,7 @@ export const useGreenhouseAnchorStore = create<GreenhouseAnchorStore>()(
       setFromDb: (dbRows) =>
         set({
           anchors: mergeGreenhouseAnchors(dbRows),
-          loadedAt: new Date().toISOString(),
+          loadedAt: kenyaNowIso(),
         }),
       resetToSynthetic: () =>
         set({

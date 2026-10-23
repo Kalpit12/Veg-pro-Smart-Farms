@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { watchScoutingPosition, type GpsPositionSample } from "@/lib/gps";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { distanceBetweenPoints, durationSeconds, formatDistance, formatDuration } from "@/lib/route-metrics";
 import { checkGreenhouseGeofence } from "@/lib/scouting-geofence";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
@@ -175,7 +176,7 @@ export function useScoutingRouteTracker(
       return;
     }
 
-    startedAtRef.current = startedAt ?? new Date().toISOString();
+    startedAtRef.current = startedAt ?? kenyaNowIso();
     const points = getPointsForRound(activeRoundId);
     if (!startedAt && points[0]) startedAtRef.current = points[0].recordedAt;
 

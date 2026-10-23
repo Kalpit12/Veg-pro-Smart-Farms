@@ -1,4 +1,5 @@
 import { getServerDataBackend } from "@/lib/data-backend";
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { parseChemicalsCsv, type ImportChemicalsResult } from "@/lib/chemicals-csv";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
@@ -66,7 +67,7 @@ export async function upsertChemical(input: { name: string; active_ingredient?: 
     name,
     active_ingredient: input.active_ingredient?.trim() || null,
     is_active: true,
-    updated_at: new Date().toISOString(),
+    updated_at: kenyaNowIso(),
   };
 
   if (existing?.id) {
@@ -116,7 +117,7 @@ export async function deactivateChemical(id: string) {
   const admin = adminClient();
   const { error } = await admin
     .from("chemicals")
-    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .update({ is_active: false, updated_at: kenyaNowIso() })
     .eq("id", id);
   if (error) return { data: null, error: { message: error.message } };
   return { data: true, error: null };

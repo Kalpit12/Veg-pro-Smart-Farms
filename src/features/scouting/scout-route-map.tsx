@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
+import { formatKenyaDateTime } from "@/lib/kenya-time";
 import { Pause, Play, RotateCcw } from "lucide-react";
 
 import { AppSelect } from "@/components/ui/app-select";
@@ -396,11 +396,11 @@ export function ScoutRouteMap() {
             hasConfiguredBackend()
               ? remoteRounds.map((r) => ({
                   value: r.id,
-                  label: `${r.greenhouses?.name ?? "GH"} · ${format(new Date(r.started_at), "MMM d HH:mm")}${r.status === "active" ? " · active" : ""}`,
+                  label: `${r.greenhouses?.name ?? "GH"} · ${formatKenyaDateTime(r.started_at, "short")}${r.status === "active" ? " · active" : ""}`,
                 }))
               : demoRoundList.map((r) => ({
                   value: r.id,
-                  label: `${r.greenhouseName} · ${format(new Date(r.startedAt), "MMM d HH:mm")}`,
+                  label: `${r.greenhouseName} · ${formatKenyaDateTime(r.startedAt, "short")}`,
                 }))
           }
           placeholder="Select round…"

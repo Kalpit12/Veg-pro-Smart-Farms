@@ -1,6 +1,6 @@
 "use client";
 
-import { format } from "date-fns";
+import { formatKenyaDateTime } from "@/lib/kenya-time";
 
 import { ExportExcelButton } from "@/components/export-excel-button";
 import { PhotoEvidenceLink } from "@/features/evidence/photo-evidence-link";
@@ -85,7 +85,7 @@ export function ScoutingRecordsTable() {
           {display.map((r) => (
             <tr key={r.id} className="border-t border-border/70">
               <td className="px-3 py-2 whitespace-nowrap">
-                {format(new Date(r.date), "MMM d, yyyy HH:mm")}
+                {formatKenyaDateTime(r.date, "medium")}
               </td>
               <td className="px-3 py-2">{r.scout}</td>
               <td className="px-3 py-2">{r.farm}</td>
