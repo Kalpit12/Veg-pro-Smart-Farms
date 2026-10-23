@@ -40,8 +40,12 @@ import { cn } from "@/lib/utils";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
+import { useFieldHeatOverlayStore } from "@/store/field-heat-overlay-store";
 import { useScanStore } from "@/store/scan-store";
 import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
+import { gridInputFromFieldLine, ratingForFieldReportLine } from "@/lib/field-heat-map";
+import { notifyScoutingDataChanged } from "@/lib/scouting-data-events";
+import { BEMACK_CATEGORIES, varietyForBay } from "@/lib/bemack-master-data";
 import { getCurrentUser } from "@/services/supabase/auth-service";
 import { reportInfestation } from "@/services/supabase/infestation-service";
 import { uploadActivityEvidence } from "@/services/supabase/storage-service";
@@ -134,6 +138,8 @@ export function ReportInfestationForm({
   const scan = useScanStore();
   const resumeHotspot = useResumeHotspotStore((s) => s.hotspot);
   const addDemoHotspot = useFieldOpsStore((s) => s.addDemoHotspot);
+  const addDemoRecord = useScoutingStore((s) => s.addDemoRecord);
+  const pushHeatOverlay = useFieldHeatOverlayStore((s) => s.push);
   const enqueueInfestation = useFieldWriteQueueStore((s) => s.enqueueInfestation);
   const incrementStopCount = useScoutingSessionStore((s) => s.incrementStopCount);
   const session = useScoutingSessionStore((s) => s.session);
@@ -403,7 +409,36 @@ export function ReportInfestationForm({
               main_issue: mainIssue,
               severity: detail.severityForDb,
             });
+            if (mapCell && scan.greenhouseName && !isNoIssueMarker(line.name)) {
+              pushHeatOverlay({
+                greenhouseName: scan.greenhouseName,
+                columnNo: mapCell.column,
+                bayNo: mapCell.bay,
+                issueType: line.kind,
+                issue: line.name,
+                rating: ratingForFieldReportLine(line),
+              });
+              addDemoRecord({
+                scoutName: "Demo Scout",
+                farmName: scan.farmName ?? "Star",
+                farmId: scan.farmId!,
+                greenhouseName: scan.greenhouseName,
+                greenhouseId: scan.greenhouseId ?? "",
+                category: BEMACK_CATEGORIES[0],
+                variety: varietyForBay(scan.greenhouseName, mapCell.bay),
+                beds: 11,
+                columnNo: mapCell.column,
+                bayNo: mapCell.bay,
+                issueType: line.kind,
+                issue: line.name,
+                rating: ratingForFieldReportLine(line),
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                observations: [],
+              });
+            }
           }
+          notifyScoutingDataChanged();
           toast({
             title: lines.length === 1 ? "Report saved" : `${lines.length} reports saved`,
             description: "Farm manager will see this to log a spray response.",
@@ -440,6 +475,8 @@ export function ReportInfestationForm({
             problem: detail.problem,
             main_issue: mainIssue,
             severity: detail.severityForDb,
+            column_no: mapCell?.column ?? null,
+            bay_no: mapCell?.bay ?? null,
           };
 
           let scoutingMirror: FieldScoutingMirrorInput | undefined;
@@ -476,9 +513,31 @@ export function ReportInfestationForm({
                 : "Could not save report.",
             );
           }
+          if (mapCell && scan.greenhouseName) {
+            const gridCell = gridInputFromFieldLine(
+              scan.greenhouseName,
+              mapCell.column,
+              mapCell.bay,
+              line,
+            );
+            if (gridCell) {
+              pushHeatOverlay({
+                greenhouseName: gridCell.greenhouseName,
+                columnNo: gridCell.columnNo,
+                bayNo: gridCell.bayNo,
+                issueType: gridCell.issueType,
+                issue: gridCell.issue,
+                rating: gridCell.rating,
+              });
+            }
+          }
           if (scoutingMirror) {
             incrementStopCount();
           }
+        }
+
+        if (!queuedAny && mapCell) {
+          notifyScoutingDataChanged();
         }
 
         toast({

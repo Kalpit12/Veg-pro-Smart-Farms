@@ -96,6 +96,7 @@ export function FieldWorkPanel() {
           {scan.greenhouseName ? (
             <GreenhouseHeatGrid
               greenhouseName={scan.greenhouseName}
+              greenhouseId={scan.greenhouseId}
               lockGreenhouse
               interactive
               selectedCell={selectedCell}

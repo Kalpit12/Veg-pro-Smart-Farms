@@ -14,6 +14,8 @@ export type ReportInfestationInput = {
   problem: string;
   main_issue: string;
   severity: number;
+  column_no?: number | null;
+  bay_no?: number | null;
 };
 
 export async function reportInfestation(

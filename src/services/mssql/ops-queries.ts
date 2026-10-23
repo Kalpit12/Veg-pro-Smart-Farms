@@ -36,6 +36,8 @@ function mapHotspot(r: Record<string, unknown>) {
     problem: r.problem as string,
     main_issue: r.main_issue as string,
     severity: r.severity as number,
+    column_no: r.column_no != null ? (r.column_no as number) : null,
+    bay_no: r.bay_no != null ? (r.bay_no as number) : null,
     status: r.status as InfestationStatus,
     created_at: toIso(r.created_at),
     farms: r.farm_name ? { name: r.farm_name as string } : null,
@@ -67,21 +69,55 @@ export async function mssqlReportInfestation(
       .input("pest_type", sql.NVarChar(100), input.pest_type)
       .input("problem", sql.NVarChar(500), input.problem)
       .input("main_issue", sql.NVarChar(200), input.main_issue)
-      .input("severity", sql.SmallInt, input.severity);
+      .input("severity", sql.SmallInt, input.severity)
+      .input("column_no", sql.SmallInt, input.column_no ?? null)
+      .input("bay_no", sql.SmallInt, input.bay_no ?? null);
     if (input.greenhouse_id) {
       insert.input("greenhouse_id", sql.UniqueIdentifier, input.greenhouse_id);
     } else {
       insert.input("greenhouse_id", sql.UniqueIdentifier, null);
     }
-    await insert.query(`
-      INSERT INTO dbo.infestation_hotspots (
-        id, farm_id, greenhouse_id, reported_by, latitude, longitude,
-        pest_type, problem, main_issue, severity, status
-      ) VALUES (
-        @id, @farm_id, @greenhouse_id, @reported_by, @latitude, @longitude,
-        @pest_type, @problem, @main_issue, @severity, 'active'
-      )
-    `);
+    try {
+      await insert.query(`
+        INSERT INTO dbo.infestation_hotspots (
+          id, farm_id, greenhouse_id, reported_by, latitude, longitude,
+          pest_type, problem, main_issue, severity, column_no, bay_no, status
+        ) VALUES (
+          @id, @farm_id, @greenhouse_id, @reported_by, @latitude, @longitude,
+          @pest_type, @problem, @main_issue, @severity, @column_no, @bay_no, 'active'
+        )
+      `);
+    } catch (gridColErr) {
+      const gridMsg = gridColErr instanceof Error ? gridColErr.message : String(gridColErr);
+      if (!/Invalid column name|column_no|bay_no/i.test(gridMsg)) {
+        throw gridColErr;
+      }
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, id)
+        .input("farm_id", sql.UniqueIdentifier, input.farm_id)
+        .input("reported_by", sql.UniqueIdentifier, input.reported_by)
+        .input("latitude", sql.Float, input.latitude)
+        .input("longitude", sql.Float, input.longitude)
+        .input("pest_type", sql.NVarChar(100), input.pest_type)
+        .input("problem", sql.NVarChar(500), input.problem)
+        .input("main_issue", sql.NVarChar(200), input.main_issue)
+        .input("severity", sql.SmallInt, input.severity)
+        .input(
+          "greenhouse_id",
+          sql.UniqueIdentifier,
+          input.greenhouse_id ?? null,
+        )
+        .query(`
+          INSERT INTO dbo.infestation_hotspots (
+            id, farm_id, greenhouse_id, reported_by, latitude, longitude,
+            pest_type, problem, main_issue, severity, status
+          ) VALUES (
+            @id, @farm_id, @greenhouse_id, @reported_by, @latitude, @longitude,
+            @pest_type, @problem, @main_issue, @severity, 'active'
+          )
+        `);
+    }
     const row = await pool
       .request()
       .input("id", sql.UniqueIdentifier, id)
@@ -207,21 +243,40 @@ export async function mssqlGetHotspotById(id: string) {
 export async function mssqlListActiveHotspotsForGreenhouse(greenhouseId: string) {
   await requireServerSession();
   const pool = await getMssqlPool();
-  const result = await pool
-    .request()
-    .input("gh", sql.UniqueIdentifier, greenhouseId)
-    .query(`
-      SELECT id, pest_type, problem, main_issue, severity, status, latitude, longitude, created_at, greenhouse_id, farm_id
+  const req = pool.request().input("gh", sql.UniqueIdentifier, greenhouseId);
+  let result;
+  try {
+    result = await req.query(`
+      SELECT id, pest_type, problem, main_issue, severity, status, latitude, longitude,
+             created_at, greenhouse_id, farm_id, column_no, bay_no
       FROM dbo.infestation_hotspots
       WHERE greenhouse_id = @gh AND status = 'active'
       ORDER BY severity DESC
     `);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/Invalid column name|column_no|bay_no/i.test(msg)) {
+      return fail(msg);
+    }
+    result = await pool
+      .request()
+      .input("gh", sql.UniqueIdentifier, greenhouseId)
+      .query(`
+        SELECT id, pest_type, problem, main_issue, severity, status, latitude, longitude,
+               created_at, greenhouse_id, farm_id
+        FROM dbo.infestation_hotspots
+        WHERE greenhouse_id = @gh AND status = 'active'
+        ORDER BY severity DESC
+      `);
+  }
   return ok(
     result.recordset.map((r) => ({
       ...r,
       id: String(r.id),
       farm_id: String(r.farm_id),
       greenhouse_id: r.greenhouse_id ? String(r.greenhouse_id) : null,
+      column_no: r.column_no != null ? (r.column_no as number) : null,
+      bay_no: r.bay_no != null ? (r.bay_no as number) : null,
       created_at: toIso(r.created_at),
     })),
   );

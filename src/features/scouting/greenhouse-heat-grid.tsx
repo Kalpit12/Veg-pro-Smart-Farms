@@ -13,15 +13,21 @@ import {
   issueShortCode,
   maxColumnsForGreenhouse,
 } from "@/lib/bemack-master-data";
+import { gridInputFromHotspot } from "@/lib/field-heat-map";
 import { buildGreenhouseGrid, scoreColor, type ScoutingGridInput } from "@/lib/greenhouse-grid";
 import { filterUnresolvedScoutingRecords } from "@/lib/issue-resolution";
+import { SCOUTING_DATA_CHANGED_EVENT } from "@/lib/scouting-data-events";
 import { useHotspotResolutionRefs } from "@/hooks/use-hotspot-resolution";
 import { useScoutingData } from "@/hooks/use-scouting-data";
+import { hasConfiguredBackend } from "@/lib/data-backend";
+import { listActiveHotspotsForGreenhouse } from "@/services/supabase/infestation-service";
+import { useFieldHeatOverlayStore } from "@/store/field-heat-overlay-store";
 import { cn } from "@/lib/utils";
 import type { ScoutCellLocation } from "@/lib/scout-observation-flow";
 
 type GreenhouseHeatGridProps = {
   greenhouseName?: string;
+  greenhouseId?: string | null;
   lockGreenhouse?: boolean;
   /** When set, only observations from this scouting round appear on the grid. */
   roundId?: string | null;
@@ -34,6 +40,7 @@ type GreenhouseHeatGridProps = {
 
 export function GreenhouseHeatGrid({
   greenhouseName,
+  greenhouseId = null,
   lockGreenhouse = false,
   roundId = null,
   interactive = false,
@@ -41,13 +48,54 @@ export function GreenhouseHeatGrid({
   onCellSelect,
   compact = false,
 }: GreenhouseHeatGridProps) {
-  const { records, loading } = useScoutingData(14);
+  const { records, loading, refresh } = useScoutingData(14);
   const resolutionHotspots = useHotspotResolutionRefs();
+  const overlays = useFieldHeatOverlayStore((s) => s.overlays);
+  const [hotspotInputs, setHotspotInputs] = useState<ScoutingGridInput[]>([]);
   const [greenhouse, setGreenhouse] = useState(greenhouseName ?? "STGH01A");
 
   useEffect(() => {
     if (greenhouseName) setGreenhouse(greenhouseName);
   }, [greenhouseName]);
+
+  useEffect(() => {
+    const onChanged = () => void refresh();
+    window.addEventListener(SCOUTING_DATA_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(SCOUTING_DATA_CHANGED_EVENT, onChanged);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!hasConfiguredBackend() || !greenhouseId || !greenhouseName) {
+      setHotspotInputs([]);
+      return;
+    }
+    let cancelled = false;
+    void listActiveHotspotsForGreenhouse(greenhouseId).then(({ data }) => {
+      if (cancelled || !data) return;
+      const rows = data as Array<{
+        pest_type: string;
+        severity: number;
+        column_no?: number | null;
+        bay_no?: number | null;
+      }>;
+      setHotspotInputs(
+        rows
+          .map((h) =>
+            gridInputFromHotspot({
+              greenhouseName,
+              columnNo: h.column_no ?? null,
+              bayNo: h.bay_no ?? null,
+              pestType: h.pest_type,
+              severity: h.severity,
+            }),
+          )
+          .filter(Boolean) as ScoutingGridInput[],
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [greenhouseId, greenhouseName, records.length, overlays.length]);
 
   const grid = useMemo(() => {
     const scoped = roundId
@@ -62,8 +110,20 @@ export function GreenhouseHeatGrid({
       issue: r.issue,
       rating: r.rating,
     }));
+    for (const o of overlays) {
+      if (o.greenhouseName !== greenhouse) continue;
+      input.push({
+        greenhouseName: o.greenhouseName,
+        columnNo: o.columnNo,
+        bayNo: o.bayNo,
+        issueType: o.issueType,
+        issue: o.issue,
+        rating: o.rating,
+      });
+    }
+    input.push(...hotspotInputs.filter((h) => h.greenhouseName === greenhouse));
     return buildGreenhouseGrid(input, greenhouse);
-  }, [records, greenhouse, resolutionHotspots, roundId]);
+  }, [records, greenhouse, resolutionHotspots, roundId, overlays, hotspotInputs]);
 
   const { columns, bayRows, cellLookup } = useMemo(() => {
     const bayMax = bayMaxForGreenhouse(greenhouse);

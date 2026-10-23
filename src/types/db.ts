@@ -42,6 +42,8 @@ export interface InfestationHotspot {
   main_issue: string;
   severity: number;
   status: InfestationStatus;
+  column_no?: number | null;
+  bay_no?: number | null;
   created_at: string;
 }
 

@@ -687,12 +687,21 @@ export async function mssqlMirrorFieldLineToScouting(
   ]);
   if (cats.error || varieties.error || parameters.error) return;
 
-  const categoryName = BEMACK_CATEGORIES[0];
-  const catRow = cats.data?.find((c) => c.name === categoryName);
   const varietyName = varietyForBay(mirror.greenhouseName, mirror.bay);
-  const varRow = varieties.data?.find(
-    (v) => v.name === varietyName && v.category_id === catRow?.id,
-  );
+  let varRow = varieties.data?.find((v) => v.name === varietyName);
+  if (!varRow) {
+    varRow = varieties.data?.find(
+      (v) =>
+        v.name.localeCompare(varietyName, undefined, { sensitivity: "accent" }) === 0,
+    );
+  }
+  if (!varRow && varieties.data?.length) {
+    varRow = varieties.data[0];
+  }
+  const categoryName = BEMACK_CATEGORIES[0];
+  const catRow =
+    cats.data?.find((c) => c.name === categoryName) ??
+    (varRow ? cats.data?.find((c) => c.id === varRow!.category_id) : undefined);
   if (!catRow || !varRow) return;
 
   const paramRows = parameters.data ?? [];

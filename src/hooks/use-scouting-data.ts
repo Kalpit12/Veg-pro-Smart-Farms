@@ -6,6 +6,7 @@ import type { MssqlPollOptions } from "@/hooks/use-mssql-poll";
 
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { hasConfiguredBackend } from "@/lib/data-backend";
+import { SCOUTING_DATA_CHANGED_EVENT } from "@/lib/scouting-data-events";
 import type { SprayProgramInput } from "@/lib/spray-work-program";
 import {
   listScoutingRecords,
@@ -198,6 +199,12 @@ export function useScoutingData(days = 30, options?: Pick<MssqlPollOptions, "ena
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onChanged = () => void load();
+    window.addEventListener(SCOUTING_DATA_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(SCOUTING_DATA_CHANGED_EVENT, onChanged);
   }, [load]);
 
   useRealtimeScouting(load, { enabled: poll });
