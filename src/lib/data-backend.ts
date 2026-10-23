@@ -1,9 +1,19 @@
 import { getMssqlConfig } from "@/lib/mssql/config";
 import { getSupabaseAnonKey } from "@/lib/supabase/config";
 
+function clientRuntimeBackend(): ServerDataBackend | null {
+  if (typeof window === "undefined") return null;
+  const runtime = window.__VEGPRO_DATA_BACKEND__;
+  if (runtime === "mssql" || runtime === "supabase" || runtime === "demo") {
+    return runtime;
+  }
+  return null;
+}
+
 /** Browser: Supabase or VegPro MS SQL (not offline demo). */
 export function hasMssqlEnv() {
-  return process.env.NEXT_PUBLIC_DATA_BACKEND === "mssql";
+  if (process.env.NEXT_PUBLIC_DATA_BACKEND === "mssql") return true;
+  return clientRuntimeBackend() === "mssql";
 }
 
 export function hasSupabaseEnv() {
@@ -11,13 +21,17 @@ export function hasSupabaseEnv() {
 }
 
 export function hasConfiguredBackend() {
-  return hasSupabaseEnv() || hasMssqlEnv();
+  if (hasSupabaseEnv() || hasMssqlEnv()) return true;
+  const runtime = clientRuntimeBackend();
+  return runtime === "mssql" || runtime === "supabase";
 }
 
 declare global {
   interface Window {
     /** Set after /api/app/config when server uses MSSQL/Supabase. */
     __VEGPRO_FORCE_PRODUCTION__?: boolean;
+    /** Server data backend when NEXT_PUBLIC_* was not set at build time. */
+    __VEGPRO_DATA_BACKEND__?: ServerDataBackend;
   }
 }
 

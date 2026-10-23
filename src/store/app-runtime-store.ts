@@ -18,20 +18,31 @@ export const useAppRuntimeStore = create<AppRuntimeState>((set, get) => ({
     if (hasConfiguredBackend()) {
       window.__VEGPRO_FORCE_PRODUCTION__ = true;
       set({ hydrated: true, forceProduction: true });
-      return;
     }
     try {
       const res = await fetch("/api/app/config", { cache: "no-store" });
-      const json = (await res.json()) as { production?: boolean };
-      if (json.production) {
+      const json = (await res.json()) as {
+        production?: boolean;
+        dataBackend?: "mssql" | "supabase" | "demo";
+      };
+      if (json.dataBackend) {
+        window.__VEGPRO_DATA_BACKEND__ = json.dataBackend;
+      }
+      if (
+        json.production ||
+        json.dataBackend === "mssql" ||
+        json.dataBackend === "supabase"
+      ) {
         window.__VEGPRO_FORCE_PRODUCTION__ = true;
         window.dispatchEvent(new Event("vegpro-runtime-config"));
         set({ hydrated: true, forceProduction: true });
-      } else {
+      } else if (!get().hydrated) {
         set({ hydrated: true, forceProduction: false });
       }
     } catch {
-      set({ hydrated: true, forceProduction: false });
+      if (!get().hydrated) {
+        set({ hydrated: true, forceProduction: false });
+      }
     }
   },
 }));

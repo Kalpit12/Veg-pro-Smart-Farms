@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 
+import { SCOUTING_PARAMETERS } from "@/lib/bemack-master-data";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
 import { requireServerSession, type ServerSession } from "@/lib/mssql/session-server";
@@ -13,6 +14,35 @@ import { isUuid } from "@/lib/uuid";
 
 function canReadAllScouting(session: ServerSession) {
   return session.role === "admin" || session.role === "supervisor";
+}
+
+async function ensureScoutingParametersSeeded(pool: Awaited<ReturnType<typeof getMssqlPool>>) {
+  for (let i = 0; i < SCOUTING_PARAMETERS.length; i++) {
+    const p = SCOUTING_PARAMETERS[i]!;
+    await pool
+      .request()
+      .input("param_key", sql.NVarChar(80), p.id)
+      .input("param_group", sql.NVarChar(20), p.group)
+      .input("name", sql.NVarChar(200), p.name)
+      .input("sort_order", sql.Int, i + 1)
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM dbo.scouting_parameters WHERE param_key = @param_key)
+        INSERT INTO dbo.scouting_parameters (id, param_key, param_group, name, sort_order)
+        VALUES (NEWID(), @param_key, @param_group, @name, @sort_order)
+      `);
+  }
+}
+
+async function resolveRoundIdForInsert(
+  pool: Awaited<ReturnType<typeof getMssqlPool>>,
+  roundId: string | null | undefined,
+) {
+  if (!roundId || !isUuid(roundId)) return null;
+  const check = await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, roundId)
+    .query(`SELECT 1 AS ok FROM dbo.scouting_rounds WHERE id = @id`);
+  return check.recordset.length ? roundId : null;
 }
 
 async function scoutingRecordsScopeClause(session: ServerSession, alias = "r") {
@@ -68,6 +98,7 @@ export async function mssqlListCropVarieties(categoryId?: string) {
 
 export async function mssqlListScoutingParameters() {
   const pool = await getMssqlPool();
+  await ensureScoutingParametersSeeded(pool);
   const result = await pool.request().query(
     `SELECT id, param_key, param_group, name, sort_order, created_at
      FROM dbo.scouting_parameters ORDER BY sort_order`,
@@ -90,11 +121,29 @@ export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput
   }
 
   const pool = await getMssqlPool();
+  await ensureScoutingParametersSeeded(pool);
   const recordId = randomUUID();
   const recordedAt = input.recorded_at ?? new Date().toISOString();
+  const roundId = await resolveRoundIdForInsert(pool, input.round_id);
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
+    const validParamIds = new Set<string>();
+    if (input.observations.length) {
+      const ids = input.observations.map((o) => o.parameter_id).filter(isUuid);
+      if (ids.length) {
+        const req = new sql.Request(tx);
+        ids.forEach((id, i) => req.input(`p${i}`, sql.UniqueIdentifier, id));
+        const inList = ids.map((_, i) => `@p${i}`).join(",");
+        const found = await req.query(
+          `SELECT id FROM dbo.scouting_parameters WHERE id IN (${inList})`,
+        );
+        for (const row of found.recordset) {
+          validParamIds.add(String(row.id));
+        }
+      }
+    }
+
     await new sql.Request(tx)
       .input("id", sql.UniqueIdentifier, recordId)
       .input("scout_id", sql.UniqueIdentifier, input.scout_id)
@@ -102,7 +151,7 @@ export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput
       .input("greenhouse_id", sql.UniqueIdentifier, input.greenhouse_id)
       .input("category_id", sql.UniqueIdentifier, input.category_id)
       .input("variety_id", sql.UniqueIdentifier, input.variety_id)
-      .input("round_id", sql.UniqueIdentifier, input.round_id ?? null)
+      .input("round_id", sql.UniqueIdentifier, roundId)
       .input("beds", sql.SmallInt, input.beds)
       .input("column_no", sql.SmallInt, input.column_no)
       .input("bay_no", sql.SmallInt, input.bay_no)
@@ -127,6 +176,7 @@ export async function mssqlCreateScoutingRecord(input: CreateScoutingRecordInput
       `);
 
     for (const o of input.observations) {
+      if (!validParamIds.has(o.parameter_id)) continue;
       await new sql.Request(tx)
         .input("id", sql.UniqueIdentifier, randomUUID())
         .input("record_id", sql.UniqueIdentifier, recordId)
@@ -222,8 +272,8 @@ export async function mssqlListScoutingRecords(limit = 200) {
     FROM dbo.scouting_records r
     INNER JOIN dbo.farms f ON f.id = r.farm_id
     INNER JOIN dbo.greenhouses g ON g.id = r.greenhouse_id
-    INNER JOIN dbo.crop_categories c ON c.id = r.category_id
-    INNER JOIN dbo.crop_varieties v ON v.id = r.variety_id
+    LEFT JOIN dbo.crop_categories c ON c.id = r.category_id
+    LEFT JOIN dbo.crop_varieties v ON v.id = r.variety_id
     INNER JOIN dbo.users u ON u.id = r.scout_id
     ${where}
     ORDER BY r.recorded_at DESC
@@ -251,8 +301,8 @@ export async function mssqlListScoutingRecordsSince(since: Date) {
     FROM dbo.scouting_records r
     INNER JOIN dbo.farms f ON f.id = r.farm_id
     INNER JOIN dbo.greenhouses g ON g.id = r.greenhouse_id
-    INNER JOIN dbo.crop_categories c ON c.id = r.category_id
-    INNER JOIN dbo.crop_varieties v ON v.id = r.variety_id
+    LEFT JOIN dbo.crop_categories c ON c.id = r.category_id
+    LEFT JOIN dbo.crop_varieties v ON v.id = r.variety_id
     INNER JOIN dbo.users u ON u.id = r.scout_id
     ${where}
     ORDER BY r.recorded_at DESC

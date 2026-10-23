@@ -364,12 +364,11 @@ export function ScoutingStopForm({
 
           if (presentParams.length && obsInputs.length < presentParams.length) {
             toast({
-              title: "Some parameters could not be saved",
+              title: "Some parameters skipped",
               description:
-                "A checked parameter is missing from the database. Run Star farm seed (migration 016).",
-              tone: "error",
+                "Missing parameter rows in SQL were skipped; the scouting stop will still save.",
+              tone: "default",
             });
-            return;
           }
 
           const offline =
