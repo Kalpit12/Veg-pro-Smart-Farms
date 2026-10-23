@@ -41,6 +41,7 @@ import { useFieldOpsStore } from "@/store/field-ops-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
 import { useScanStore } from "@/store/scan-store";
+import { syncScoutingRecordsFromFieldReport } from "@/lib/field-report-scouting-sync";
 import { getCurrentUser } from "@/services/supabase/auth-service";
 import { reportInfestation } from "@/services/supabase/infestation-service";
 import { uploadActivityEvidence } from "@/services/supabase/storage-service";
@@ -134,6 +135,7 @@ export function ReportInfestationForm({
   const resumeHotspot = useResumeHotspotStore((s) => s.hotspot);
   const addDemoHotspot = useFieldOpsStore((s) => s.addDemoHotspot);
   const enqueueInfestation = useFieldWriteQueueStore((s) => s.enqueueInfestation);
+  const incrementStopCount = useScoutingSessionStore((s) => s.incrementStopCount);
   const session = useScoutingSessionStore((s) => s.session);
   const walkEngaged = useScoutingSessionStore((s) => s.walkEngaged);
   const activeRoundId = useScoutingStore((s) => s.activeRoundId);
@@ -457,6 +459,35 @@ export function ReportInfestationForm({
           }
         }
 
+        let scoutSyncNote: string | null = null;
+        if (
+          !queuedAny &&
+          mapCell &&
+          scan.greenhouseId &&
+          scan.greenhouseName
+        ) {
+          const roundId = session?.roundId ?? null;
+          const { saved, error: scoutSyncError } = await syncScoutingRecordsFromFieldReport({
+            scoutId: user.id,
+            farmId: scan.farmId!,
+            greenhouseId: scan.greenhouseId,
+            greenhouseName: scan.greenhouseName,
+            mapCell,
+            lines,
+            zoneLabel: zoneConfig.label,
+            notes: values.notes?.trim() || null,
+            roundId,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          });
+          if (scoutSyncError) {
+            scoutSyncNote =
+              "Hotspot saved; scouting KPI row did not sync (check crop varieties in SQL).";
+          } else if (saved > 0) {
+            incrementStopCount();
+          }
+        }
+
         toast({
           title: queuedAny
             ? lines.length === 1
@@ -467,7 +498,7 @@ export function ReportInfestationForm({
               : `${lines.length} reports saved`,
           description: queuedAny
             ? "No signal — reports will upload when you reconnect."
-            : "Farm manager will see this to log a spray response.",
+            : scoutSyncNote ?? "Farm manager will see this to log a spray response.",
           tone: queuedAny ? "default" : "success",
         });
         resetAfterSuccess();
