@@ -451,7 +451,14 @@ export function ReportInfestationForm({
 
         const user = await getCurrentUser();
         if (!user) {
-          toast({ title: "Not signed in", tone: "error" });
+          toast({
+            title: "Not signed in",
+            description:
+              typeof navigator !== "undefined" && !navigator.onLine
+                ? "Sign in once while online so this phone can save reports offline."
+                : undefined,
+            tone: "error",
+          });
           return;
         }
 
@@ -495,7 +502,7 @@ export function ReportInfestationForm({
           }
 
           if (offline) {
-            enqueueInfestation(payload);
+            enqueueInfestation(payload, scoutingMirror);
             queuedAny = true;
             continue;
           }
@@ -503,7 +510,7 @@ export function ReportInfestationForm({
           const { error } = await reportInfestation(payload, scoutingMirror);
           if (error) {
             if (isLikelyOfflineError(error)) {
-              enqueueInfestation(payload);
+              enqueueInfestation(payload, scoutingMirror);
               queuedAny = true;
               continue;
             }

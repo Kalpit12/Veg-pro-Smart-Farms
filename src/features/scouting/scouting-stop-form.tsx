@@ -42,6 +42,7 @@ import type { ScoutCellLocation, ScoutObservationHandoff } from "@/lib/scout-obs
 import { SCOUT_NONE_FOUND } from "@/lib/scout-observation-flow";
 import { putEvidenceBlob } from "@/lib/offline-evidence-store";
 import { isLikelyOfflineError, useFieldWriteQueueStore } from "@/store/field-write-queue-store";
+import { useOfflineScoutingCatalogStore } from "@/store/offline-scouting-catalog-store";
 import { useScoutingRouteBufferStore } from "@/store/scouting-route-buffer-store";
 import { useScanStore } from "@/store/scan-store";
 import { useResumeHotspotStore } from "@/store/resume-hotspot-store";
@@ -297,11 +298,21 @@ export function ScoutingStopForm({
 
           const user = await getCurrentUser();
           if (!user) {
-            toast({ title: "Not signed in", tone: "error" });
+            toast({
+              title: "Not signed in",
+              description:
+                typeof navigator !== "undefined" && !navigator.onLine
+                  ? "Sign in once while online so this phone can save stops offline."
+                  : undefined,
+              tone: "error",
+            });
             return;
           }
 
-          if (!hasMssqlEnv()) {
+          const offline =
+            typeof navigator !== "undefined" && navigator.onLine === false;
+
+          if (!offline && !hasMssqlEnv()) {
             const supabase = createClient();
             const { data: profile } = await supabase
               .from("users")
@@ -319,61 +330,125 @@ export function ScoutingStopForm({
             }
           }
 
-          const [cats, varieties, parameters] = await Promise.all([
-            listCropCategories(),
-            listCropVarieties(),
-            listScoutingParameters(),
-          ]);
-          const svcErr = cats.error ?? varieties.error ?? parameters.error;
-          if (svcErr) {
-            throw new Error(
-              typeof svcErr === "object" && svcErr && "message" in svcErr
-                ? String((svcErr as { message: string }).message)
-                : String(svcErr),
-            );
-          }
+          let categoryId: string;
+          let varietyId: string;
+          let obsInputs: {
+            parameter_id: string;
+            present: boolean;
+            rating: number | null;
+          }[];
 
-          const catRow = cats.data?.find((c) => c.name === values.category);
-          const varRow = varieties.data?.find(
-            (v) => v.name === values.variety && v.category_id === catRow?.id,
-          );
-          if (!catRow || !varRow) {
-            toast({
-              title: "Master data missing",
-              description: hasMssqlEnv()
-                ? "Run sql/mssql/002_seed_bemack_core.sql on the Scouting database."
-                : "Run Supabase migration 016 (Star farm seed).",
-              tone: "error",
-            });
-            return;
-          }
-
-          const paramRows = parameters.data ?? [];
           const presentParams = SCOUTING_PARAMETERS.filter((p) => params[p.id]?.present);
-          const obsInputs = presentParams
-            .map((p) => {
-              const row = paramRows.find((r) => r.param_key === p.id);
-              return row
-                ? {
-                    parameter_id: row.id,
-                    present: true,
-                    rating: params[p.id]?.rating ?? null,
-                  }
-                : null;
-            })
-            .filter(Boolean) as { parameter_id: string; present: boolean; rating: number | null }[];
 
-          if (presentParams.length && obsInputs.length < presentParams.length) {
-            toast({
-              title: "Some parameters skipped",
-              description:
-                "Missing parameter rows in SQL were skipped; the scouting stop will still save.",
-              tone: "default",
+          if (offline) {
+            const catalog = useOfflineScoutingCatalogStore.getState();
+            categoryId = catalog.resolveCategoryId(values.category) ?? "";
+            varietyId = catalog.resolveVarietyId(values.variety) ?? "";
+            if (!categoryId || !varietyId) {
+              toast({
+                title: "Offline catalog not ready",
+                description:
+                  "Save one scouting stop while online first (same farm), then offline saves will work.",
+                tone: "error",
+              });
+              return;
+            }
+            obsInputs = presentParams
+              .map((p) => {
+                const parameter_id = catalog.resolveParameterId(p.id);
+                return parameter_id
+                  ? {
+                      parameter_id,
+                      present: true,
+                      rating: params[p.id]?.rating ?? null,
+                    }
+                  : null;
+              })
+              .filter(Boolean) as {
+              parameter_id: string;
+              present: boolean;
+              rating: number | null;
+            }[];
+          } else {
+            const [cats, varieties, parameters] = await Promise.all([
+              listCropCategories(),
+              listCropVarieties(),
+              listScoutingParameters(),
+            ]);
+            const svcErr = cats.error ?? varieties.error ?? parameters.error;
+            if (svcErr) {
+              if (isLikelyOfflineError(svcErr)) {
+                toast({
+                  title: "No signal",
+                  description: "Turn off airplane mode or queue after catalog loads once online.",
+                  tone: "error",
+                });
+                return;
+              }
+              throw new Error(
+                typeof svcErr === "object" && svcErr && "message" in svcErr
+                  ? String((svcErr as { message: string }).message)
+                  : String(svcErr),
+              );
+            }
+
+            const catRow = cats.data?.find((c) => c.name === values.category);
+            const varRow = varieties.data?.find(
+              (v) => v.name === values.variety && v.category_id === catRow?.id,
+            );
+            if (!catRow || !varRow) {
+              toast({
+                title: "Master data missing",
+                description: hasMssqlEnv()
+                  ? "Run sql/mssql/002_seed_bemack_core.sql on the Scouting database."
+                  : "Run Supabase migration 016 (Star farm seed).",
+                tone: "error",
+              });
+              return;
+            }
+            categoryId = catRow.id;
+            varietyId = varRow.id;
+
+            const paramRows = parameters.data ?? [];
+            useOfflineScoutingCatalogStore.getState().setFromApi({
+              categories: (cats.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+              varieties: (varieties.data ?? []).map((v) => ({
+                id: v.id,
+                name: v.name,
+                category_id: v.category_id,
+              })),
+              parameters: paramRows.map((r) => ({
+                id: r.id,
+                param_key: r.param_key,
+              })),
             });
-          }
 
-          const offline =
-            typeof navigator !== "undefined" && navigator.onLine === false;
+            obsInputs = presentParams
+              .map((p) => {
+                const row = paramRows.find((r) => r.param_key === p.id);
+                return row
+                  ? {
+                      parameter_id: row.id,
+                      present: true,
+                      rating: params[p.id]?.rating ?? null,
+                    }
+                  : null;
+              })
+              .filter(Boolean) as {
+              parameter_id: string;
+              present: boolean;
+              rating: number | null;
+            }[];
+
+            if (presentParams.length && obsInputs.length < presentParams.length) {
+              toast({
+                title: "Some parameters skipped",
+                description:
+                  "Missing parameter rows in SQL were skipped; the scouting stop will still save.",
+                tone: "default",
+              });
+            }
+          }
 
           let imagePath: string | null = null;
           let pendingPhoto:
@@ -424,8 +499,8 @@ export function ScoutingStopForm({
             scout_id: user.id,
             farm_id: location.farmId,
             greenhouse_id: location.greenhouseId,
-            category_id: catRow.id,
-            variety_id: varRow.id,
+            category_id: categoryId,
+            variety_id: varietyId,
             beds: values.beds,
             column_no: values.column_no,
             bay_no: values.bay_no,

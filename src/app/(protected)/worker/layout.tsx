@@ -1,4 +1,5 @@
 import { AppShell, type NavItem } from "@/components/app-shell";
+import { WorkerLayoutClient } from "@/app/(protected)/worker/worker-layout-client";
 import { requireRole } from "@/lib/auth/require-role";
 
 const workerNav: NavItem[] = [
@@ -14,7 +15,7 @@ export default async function WorkerLayout({
   await requireRole(["worker"]);
   return (
     <AppShell navItems={workerNav} title="VegPro Worker App" roleMode="worker">
-      {children}
+      <WorkerLayoutClient>{children}</WorkerLayoutClient>
     </AppShell>
   );
 }

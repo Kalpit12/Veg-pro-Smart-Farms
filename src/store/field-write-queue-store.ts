@@ -4,7 +4,11 @@ import { persist } from "zustand/middleware";
 
 import type { CreateScoutingRecordInput } from "@/services/supabase/scouting-service";
 import type { ReportInfestationInput } from "@/services/supabase/infestation-service";
+import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
+import { isLikelyOfflineError } from "@/lib/network-errors";
 import type { LogSprayInput } from "@/services/supabase/spray-service";
+
+export { isLikelyOfflineError };
 
 export type PendingPhotoMeta = {
   blobKey: string;
@@ -25,6 +29,7 @@ export type QueuedInfestationWrite = {
   kind: "infestation";
   createdAt: string;
   payload: ReportInfestationInput;
+  scoutingMirror?: FieldScoutingMirrorInput;
 };
 
 export type QueuedSprayWrite = {
@@ -72,7 +77,10 @@ type FieldWriteQueueStore = {
     payload: CreateScoutingRecordInput,
     options?: { pendingPhoto?: PendingPhotoMeta },
   ) => string;
-  enqueueInfestation: (payload: ReportInfestationInput) => void;
+  enqueueInfestation: (
+    payload: ReportInfestationInput,
+    scoutingMirror?: FieldScoutingMirrorInput,
+  ) => void;
   enqueueSpray: (
     payload: LogSprayInput,
     options?: { markHotspotSprayed?: boolean; pendingPhoto?: PendingPhotoMeta },
@@ -111,7 +119,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
         }));
         return id;
       },
-      enqueueInfestation: (payload) =>
+      enqueueInfestation: (payload, scoutingMirror) =>
         set((s) => ({
           items: [
             ...s.items,
@@ -120,6 +128,7 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
               kind: "infestation",
               createdAt: kenyaNowIso(),
               payload,
+              scoutingMirror,
             },
           ],
         })),
@@ -174,13 +183,3 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
   ),
 );
 
-export function isLikelyOfflineError(error: unknown): boolean {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
-  const msg =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" && error && "message" in error
-        ? String((error as { message: unknown }).message)
-        : String(error ?? "");
-  return /failed to fetch|network|offline|ERR_INTERNET|Load failed|fetch/i.test(msg);
-}

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { FieldWriteQueueSync } from "@/features/field/field-write-queue-sync";
 import { HttpsGpsBanner } from "@/features/field/https-gps-banner";
 import { HotspotResumePanel } from "@/features/infestation/hotspot-resume-panel";
 import { ReportInfestationForm } from "@/features/infestation/report-infestation-form";
@@ -45,7 +44,6 @@ export function FieldWorkPanel() {
   return (
     <section className="space-y-4">
       <HttpsGpsBanner />
-      <FieldWriteQueueSync />
       <WorkerLocationPanel />
 
       {scan.farmId ? <ScoutingRoundBar /> : null}

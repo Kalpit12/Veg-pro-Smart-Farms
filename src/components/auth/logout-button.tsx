@@ -9,6 +9,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatWorkerLogoutMessage } from "@/lib/worker-logout-alert";
 import { isOfflineDemo } from "@/lib/data-backend";
+import { clearOfflineFieldUser } from "@/lib/offline-field-user";
 import { signOutAction } from "@/features/auth/sign-in-action";
 import { notifyAdminWorkerLogout } from "@/services/worker-logout-notify";
 import { useScanStore } from "@/store/scan-store";
@@ -62,6 +63,7 @@ export function LogoutButton({
       }
 
       await signOutAction();
+      clearOfflineFieldUser();
 
       document.cookie = "demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       document.cookie = "demo_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";

@@ -21,8 +21,8 @@ import {
   uploadActivityEvidence,
   uploadScoutingEvidence,
 } from "@/services/supabase/storage-service";
+import { isLikelyOfflineError } from "@/lib/network-errors";
 import {
-  isLikelyOfflineError,
   useFieldWriteQueueStore,
   type FieldQueuedWrite,
 } from "@/store/field-write-queue-store";
@@ -86,7 +86,7 @@ async function flushQueuedItem(item: FieldQueuedWrite) {
   }
 
   if (item.kind === "infestation") {
-    return reportInfestation(item.payload);
+    return reportInfestation(item.payload, item.scoutingMirror);
   }
 
   let sprayPayload = item.payload;
