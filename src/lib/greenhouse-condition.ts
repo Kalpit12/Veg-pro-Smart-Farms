@@ -99,11 +99,24 @@ function snapshotFromItems(
   };
 }
 
+function itemsForGreenhouse(
+  items: HistoryRecordForCondition[],
+  greenhouseId: string,
+  greenhouseName?: string | null,
+) {
+  return items.filter((i) => {
+    if (greenhouseId && i.greenhouse_id === greenhouseId) return true;
+    if (greenhouseName && i.greenhouse === greenhouseName) return true;
+    return false;
+  });
+}
+
 export function computeGreenhouseCondition(
   items: HistoryRecordForCondition[],
   greenhouseId: string,
+  greenhouseName?: string | null,
 ): GreenhouseConditionCompare | null {
-  const ghItems = items.filter((i) => i.greenhouse_id === greenhouseId);
+  const ghItems = itemsForGreenhouse(items, greenhouseId, greenhouseName);
   if (!ghItems.length) return null;
 
   const sample = ghItems[0];
@@ -211,8 +224,9 @@ export function computeImprovementTrend(
   greenhouseId: string,
   compare?: GreenhouseConditionCompare | null,
   rangeSince?: Date,
+  greenhouseName?: string | null,
 ): ImprovementTrendPoint[] {
-  const ghItems = items.filter((i) => i.greenhouse_id === greenhouseId);
+  const ghItems = itemsForGreenhouse(items, greenhouseId, greenhouseName);
   if (!ghItems.length && compare) {
     return buildImprovementTrendFromCompare(compare);
   }

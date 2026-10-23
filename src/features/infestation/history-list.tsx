@@ -354,21 +354,77 @@ export function HistoryList({ scope = "admin", fullReportRef }: Props) {
     sites,
   ]);
 
-  const chartGreenhouseId =
-    greenhouseId !== ALL ? greenhouseId : filtered[0]?.greenhouse_id ?? "";
-
-  const conditionCompare = useMemo((): GreenhouseConditionCompare | null => {
-    if (!chartGreenhouseId) return null;
-
-    if (isOfflineDemo()) {
-      return getDemoGreenhouseCondition(chartGreenhouseId);
+  const chartContext = useMemo(() => {
+    if (greenhouseId !== ALL) {
+      const meta = greenhousesForFarmCatalog(sites, farmId).find(
+        (g) => g.id === greenhouseId,
+      );
+      return {
+        id: greenhouseId,
+        name: meta?.name ?? null,
+        autoSelected: false,
+      };
     }
 
-    return computeGreenhouseCondition(scopeFilteredItems, chartGreenhouseId);
-  }, [chartGreenhouseId, scopeFilteredItems]);
+    const counts = new Map<
+      string,
+      { id: string; name: string; count: number }
+    >();
+    for (const item of filtered) {
+      let id = item.greenhouse_id;
+      const name = item.greenhouse;
+      if (!id && name && name !== "—") {
+        for (const farm of sites) {
+          const gh = farm.greenhouses.find((g) => g.name === name);
+          if (gh) {
+            id = gh.id;
+            break;
+          }
+        }
+      }
+      const key = id || name;
+      if (!key || key === "—") continue;
+      const prev = counts.get(key) ?? {
+        id: id || key,
+        name: name !== "—" ? name : key,
+        count: 0,
+      };
+      prev.count += 1;
+      counts.set(key, prev);
+    }
+
+    let best: { id: string; name: string; count: number } | null = null;
+    for (const entry of counts.values()) {
+      if (!best || entry.count > best.count) best = entry;
+    }
+
+    if (!best) {
+      return { id: "", name: null as string | null, autoSelected: false };
+    }
+
+    return {
+      id: best.id,
+      name: best.name,
+      autoSelected: true,
+    };
+  }, [greenhouseId, filtered, sites, farmId]);
+
+  const conditionCompare = useMemo((): GreenhouseConditionCompare | null => {
+    if (!chartContext.id && !chartContext.name) return null;
+
+    if (isOfflineDemo()) {
+      return getDemoGreenhouseCondition(chartContext.id);
+    }
+
+    return computeGreenhouseCondition(
+      scopeFilteredItems,
+      chartContext.id,
+      chartContext.name,
+    );
+  }, [chartContext, scopeFilteredItems]);
 
   const improvementTrend = useMemo(() => {
-    if (!conditionCompare || !chartGreenhouseId) return [];
+    if (!conditionCompare || (!chartContext.id && !chartContext.name)) return [];
 
     if (isOfflineDemo()) {
       return buildImprovementTrendFromCompare(conditionCompare);
@@ -376,11 +432,12 @@ export function HistoryList({ scope = "admin", fullReportRef }: Props) {
 
     return computeImprovementTrend(
       scopeFilteredItems,
-      chartGreenhouseId,
+      chartContext.id,
       conditionCompare,
       since,
+      chartContext.name,
     );
-  }, [conditionCompare, chartGreenhouseId, scopeFilteredItems, since]);
+  }, [conditionCompare, chartContext, scopeFilteredItems, since]);
 
   const farmOptions = useMemo(
     () => [
@@ -491,14 +548,25 @@ export function HistoryList({ scope = "admin", fullReportRef }: Props) {
         </FilterField>
       </div>
 
-      {conditionCompare && improvementTrend.length && greenhouseId !== ALL ? (
-        <GreenhouseImprovementChart
-          compare={conditionCompare}
-          trend={improvementTrend}
-        />
+      {conditionCompare && improvementTrend.length ? (
+        <div className="space-y-1">
+          {chartContext.autoSelected ? (
+            <p className="text-xs text-muted-foreground">
+              Improvement chart for{" "}
+              <span className="font-medium text-foreground">
+                {conditionCompare.farm} / {conditionCompare.greenhouse}
+              </span>{" "}
+              (most activity in current filters). Pick a site to focus one greenhouse.
+            </p>
+          ) : null}
+          <GreenhouseImprovementChart
+            compare={conditionCompare}
+            trend={improvementTrend}
+          />
+        </div>
       ) : null}
 
-      {conditionCompare && greenhouseId !== ALL ? (
+      {conditionCompare ? (
         <GreenhouseConditionPanel compare={conditionCompare} />
       ) : null}
 
