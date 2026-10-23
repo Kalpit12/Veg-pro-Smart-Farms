@@ -41,6 +41,14 @@ export function filterRoundsStartedOnDay(
   return rounds.filter((r) => isOnCalendarDay(r.startedAt, dateYmd));
 }
 
+export function filterRoundsStartedOnDays(
+  rounds: YesterdayScoutRound[],
+  dateYmds: string[],
+) {
+  if (!dateYmds.length) return rounds;
+  return rounds.filter((r) => dateYmds.some((ymd) => isOnCalendarDay(r.startedAt, ymd)));
+}
+
 export function calendarDayLabel(dateYmd: string) {
   const { from } = calendarDayWindow(dateYmd);
   return format(from, "EEEE, MMM d");

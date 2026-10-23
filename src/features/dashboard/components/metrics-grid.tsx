@@ -27,7 +27,8 @@ export function MetricsGrid({
 }) {
   const { matches } = useManagerDashboardFilterApply(managerDashboardFilters);
   const pollOpts = { enabled: liveUpdates };
-  const { records: scoutingRecords } = useScoutingData(1, pollOpts);
+  const scoutingDays = managerDashboardFilters ? 45 : 1;
+  const { records: scoutingRecords } = useScoutingData(scoutingDays, pollOpts);
   const [kpis, setKpis] = useState({
     activeHotspots: 0,
     spraysToday: 0,
@@ -53,7 +54,7 @@ export function MetricsGrid({
 
     try {
       const next = await getDashboardKpis();
-      if (managerDashboardFilters && audience === "manager") {
+      if (managerDashboardFilters) {
         const [hotRes, sprayRes] = await Promise.all([
           listActiveHotspots(100),
           listSprays(100),
@@ -91,6 +92,7 @@ export function MetricsGrid({
         });
         const stops = scoutingRecords.filter((r) =>
           matches({
+            farmId: r.farmId,
             greenhouseId: r.greenhouseId,
             greenhouseName: r.greenhouseName,
             cropType: r.variety,

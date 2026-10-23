@@ -1,32 +1,36 @@
 import { ActivityChart } from "@/features/dashboard/components/activity-chart";
 import { AdminDailyAnalytics } from "@/features/dashboard/components/admin-daily-analytics";
-import { DashboardPageHeader } from "@/features/dashboard/components/dashboard-page-header";
 import { LiveActivityFeed } from "@/features/dashboard/components/live-activity-feed";
 import { MetricsGrid } from "@/features/dashboard/components/metrics-grid";
 import { OperationsAlerts } from "@/features/dashboard/components/operations-alerts";
 import { YesterdayScoutedGreenhouses } from "@/features/dashboard/components/yesterday-scouted-greenhouses";
-import { SprayWorkProgramPanel } from "@/features/scouting/spray-work-program-panel";
+import { PendingInfestationQueue } from "@/features/infestation/pending-infestation-queue";
 
 export default function AdminDashboardPage() {
   return (
     <section className="space-y-4">
-      <DashboardPageHeader
-        title="Today on the farm"
-        description="Hotspots, sprays, workers, and scouting."
-        variant="hero"
+      <YesterdayScoutedGreenhouses
+        scope="all"
+        scoutingBasePath="/admin/scouting"
+        liveUpdates={false}
+        managerDashboardFilters
       />
-      <YesterdayScoutedGreenhouses liveUpdates={false} />
-      <MetricsGrid audience="admin" liveUpdates={false} />
-      <OperationsAlerts audience="admin" liveUpdates={false} />
-      <SprayWorkProgramPanel compact basePath="/admin" liveUpdates={false} />
+      <MetricsGrid audience="admin" liveUpdates={false} managerDashboardFilters />
+      <PendingInfestationQueue compact managerDashboardFilters />
+      <OperationsAlerts audience="admin" liveUpdates={false} managerDashboardFilters />
       <div className="grid items-start gap-4 xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
-          <ActivityChart />
-          <AdminDailyAnalytics section="mix" />
+          <ActivityChart managerDashboardFilters />
+          <AdminDailyAnalytics section="mix" managerDashboardFilters />
         </div>
-        <LiveActivityFeed className="xl:sticky xl:top-4" liveUpdates={false} />
+        <LiveActivityFeed
+          variant="admin"
+          managerDashboardFilters
+          liveUpdates={false}
+          className="xl:sticky xl:top-4"
+        />
       </div>
-      <AdminDailyAnalytics section="houses" />
+      <AdminDailyAnalytics section="houses" managerDashboardFilters />
     </section>
   );
 }

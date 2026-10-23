@@ -13,9 +13,15 @@ type Props = {
   loading?: boolean;
   loadError?: string | null;
   onRetry?: () => void;
+  showAllFarmsOption?: boolean;
 };
 
-export function ManagerDashboardFiltersBar({ loading = false, loadError, onRetry }: Props) {
+export function ManagerDashboardFiltersBar({
+  loading = false,
+  loadError,
+  onRetry,
+  showAllFarmsOption = true,
+}: Props) {
   const sites = useManagerDashboardFilterStore((s) => s.sites);
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
   const greenhouseId = useManagerDashboardFilterStore((s) => s.greenhouseId);
@@ -27,7 +33,7 @@ export function ManagerDashboardFiltersBar({ loading = false, loadError, onRetry
   const disabled = loading || !!loadError || !sites.length;
 
   const farmOptions = [
-    ...(sites.length > 1 ? [{ value: ALL, label: "All farms" }] : []),
+    ...(showAllFarmsOption ? [{ value: ALL, label: "All farms" }] : []),
     ...sites.map((f) => ({ value: f.farmId, label: f.farmName })),
   ];
 
@@ -55,7 +61,7 @@ export function ManagerDashboardFiltersBar({ loading = false, loadError, onRetry
         : "No farms assigned";
 
   return (
-    <div className="space-y-2 border-t border-border/60 pt-3">
+    <div className="border-t border-primary/10 pt-2">
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="min-w-0">
           <p className="mb-1 truncate text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">

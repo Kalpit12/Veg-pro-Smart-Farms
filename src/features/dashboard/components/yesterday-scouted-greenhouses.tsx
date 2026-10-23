@@ -17,6 +17,7 @@ import {
   calendarDayLabel,
   dedupeByGreenhouse,
   filterRoundsStartedOnDay,
+  filterRoundsStartedOnDays,
   filterRoundsStartedYesterday,
   yesterdayLabel,
   yesterdayWindow,
@@ -80,14 +81,16 @@ export function YesterdayScoutedGreenhouses({
   const applyManagerFilters = useCallback(
     (list: YesterdayScoutRound[]) => {
       if (!managerDashboardFilters) return list;
-      const { farmId, greenhouseId, variety, dateYmd, sites } = managerFilters;
+      const { farmId, greenhouseId, variety, dateYmds, dateFilterAll, sites } =
+        managerFilters;
       return list.filter((round) => {
         const farm = sites.find((f) => f.farmName === round.farmName);
         return matchesManagerDashboardFilters(sites, {
           farmId,
           greenhouseId,
           variety,
-          dateYmd,
+          dateYmds,
+          dateFilterAll,
         }, {
           farmId: farm?.farmId,
           greenhouseId: round.greenhouseId,
@@ -109,16 +112,32 @@ export function YesterdayScoutedGreenhouses({
     if (initialLoad.current) {
       setLoading(true);
     }
-    const dateYmd = managerDashboardFilters ? managerFilters.dateYmd : null;
-    const dayFilter = (list: YesterdayScoutRound[]) =>
-      dateYmd ? filterRoundsStartedOnDay(list, dateYmd) : filterRoundsStartedYesterday(list);
+    const useDates = managerDashboardFilters && !managerFilters.dateFilterAll;
+    const dateYmds = useDates ? managerFilters.dateYmds : [];
+    const dayFilter = (list: YesterdayScoutRound[]) => {
+      if (!managerDashboardFilters) return filterRoundsStartedYesterday(list);
+      if (managerFilters.dateFilterAll) return list;
+      return filterRoundsStartedOnDays(list, dateYmds);
+    };
 
     if (isOfflineDemo()) {
       setRawRounds(filterByScope(dedupeByGreenhouse(dayFilter(demoRounds))));
       setLoading(false);
       return;
     }
-    const { from, to } = dateYmd ? calendarDayWindow(dateYmd) : yesterdayWindow();
+    let from: Date;
+    let to: Date;
+    if (useDates && dateYmds.length) {
+      const windows = dateYmds.map((ymd) => calendarDayWindow(ymd));
+      from = windows.reduce((a, w) => (w.from < a ? w.from : a), windows[0]!.from);
+      to = windows.reduce((a, w) => (w.to > a ? w.to : a), windows[0]!.to);
+    } else if (managerDashboardFilters && managerFilters.dateFilterAll) {
+      from = new Date();
+      from.setDate(from.getDate() - 30);
+      to = new Date();
+    } else {
+      ({ from, to } = yesterdayWindow());
+    }
     const { data, error } = await listScoutingRoundsBetween(from, to);
     if (error || !data?.length) {
       const fallback = await listScoutingRounds(100);
@@ -136,7 +155,8 @@ export function YesterdayScoutedGreenhouses({
     assignedGreenhouseIds,
     filterByScope,
     managerDashboardFilters,
-    managerFilters.dateYmd,
+    managerFilters.dateYmds,
+    managerFilters.dateFilterAll,
   ]);
 
   useEffect(() => {
@@ -171,7 +191,11 @@ export function YesterdayScoutedGreenhouses({
           </h2>
           <p className="text-sm text-muted-foreground">
             {managerDashboardFilters
-              ? `${calendarDayLabel(managerFilters.dateYmd)} — tap a greenhouse for the full report.`
+              ? managerFilters.dateFilterAll
+                ? "All dates — tap a greenhouse for the full report."
+                : managerFilters.dateYmds.length === 1
+                  ? `${calendarDayLabel(managerFilters.dateYmds[0]!)} — tap a greenhouse for the full report.`
+                  : "Selected dates — tap a greenhouse for the full report."
               : `${yesterdayLabel()} — tap a greenhouse for the full scouting report.`}
             {scope === "assigned" ? " Only your assigned sites are shown." : null}
           </p>

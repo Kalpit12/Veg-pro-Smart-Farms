@@ -162,9 +162,7 @@ export function LiveActivityFeed({
   liveUpdates?: boolean;
   managerDashboardFilters?: boolean;
 }) {
-  const { matches, sites } = useManagerDashboardFilterApply(
-    managerDashboardFilters && variant === "manager",
-  );
+  const { matches, sites } = useManagerDashboardFilterApply(managerDashboardFilters);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [historyItems, setHistoryItems] = useState<FeedItem[]>([]);
   const [tab, setTab] = useState<"live" | "history">("live");
@@ -254,7 +252,7 @@ export function LiveActivityFeed({
 
   const filterFeedItem = useCallback(
     (activity: FeedItem) => {
-      if (!managerDashboardFilters || variant !== "manager") return true;
+      if (!managerDashboardFilters) return true;
       const farm = sites.find((f) => f.farmName === activity.farms?.name);
       return matches({
         farmId: farm?.farmId,
@@ -262,7 +260,7 @@ export function LiveActivityFeed({
         createdAt: activity.created_at,
       });
     },
-    [managerDashboardFilters, variant, matches, sites],
+    [managerDashboardFilters, matches, sites],
   );
 
   const displayItems = useMemo(() => {

@@ -21,7 +21,8 @@ export function useManagerDashboardFilterApply(enabled: boolean) {
         farmId: selection.farmId,
         greenhouseId: selection.greenhouseId,
         variety: selection.variety,
-        dateYmd: selection.dateYmd,
+        dateYmds: selection.dateYmds,
+        dateFilterAll: selection.dateFilterAll,
       }, item);
     },
     [enabled, selection],

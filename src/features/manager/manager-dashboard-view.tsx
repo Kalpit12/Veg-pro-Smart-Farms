@@ -21,8 +21,8 @@ export function ManagerDashboardView() {
       <OperationsAlerts audience="manager" managerDashboardFilters />
       <div className="grid items-start gap-4 xl:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
-          <ActivityChart />
-          <AdminDailyAnalytics section="mix" />
+          <ActivityChart managerDashboardFilters />
+          <AdminDailyAnalytics section="mix" managerDashboardFilters />
         </div>
         <LiveActivityFeed
           variant="manager"
@@ -30,7 +30,7 @@ export function ManagerDashboardView() {
           className="xl:sticky xl:top-4"
         />
       </div>
-      <AdminDailyAnalytics section="houses" />
+      <AdminDailyAnalytics section="houses" managerDashboardFilters />
     </section>
   );
 }

@@ -22,13 +22,17 @@ import {
   CHART_LEGEND_STYLE,
 } from "@/features/dashboard/components/chart-theme";
 import { VegProChartTooltip } from "@/features/dashboard/components/vegpro-chart-tooltip";
+import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-filter-apply";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoHotspots } from "@/lib/demo-field-data";
 import { hasConfiguredBackend } from "@/lib/data-backend";
+import { matchesManagerDashboardFilters } from "@/lib/manager-dashboard-filters";
 import {
   getAdminDailyAnalytics,
   type AdminDailyAnalytics,
 } from "@/services/supabase/dashboard-service";
+import { listHotspots } from "@/services/supabase/infestation-service";
+import { listScoutingRecords } from "@/services/supabase/scouting-service";
 
 const PIE_COLORS = [
   "var(--chart-1)",
@@ -88,12 +92,33 @@ function ChartCard({
   );
 }
 
+function tallyNames(values: string[]) {
+  const map = new Map<string, number>();
+  for (const v of values) {
+    const key = v.trim() || "Unspecified";
+    map.set(key, (map.get(key) ?? 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function topWithOther(rows: { name: string; value: number }[], max: number) {
+  const head = rows.slice(0, max);
+  const rest = rows.slice(max).reduce((sum, row) => sum + row.value, 0);
+  if (rest > 0) head.push({ name: "Other", value: rest });
+  return head;
+}
+
 export function AdminDailyAnalytics({
   section = "all",
+  managerDashboardFilters = false,
 }: {
   section?: "all" | "mix" | "houses";
+  managerDashboardFilters?: boolean;
 }) {
   const { toast } = useToast();
+  const filterCtx = useManagerDashboardFilterApply(managerDashboardFilters);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AdminDailyAnalytics>(demoAnalytics);
 
@@ -104,7 +129,86 @@ export function AdminDailyAnalytics({
       return;
     }
     try {
-      setData(await getAdminDailyAnalytics());
+      if (managerDashboardFilters) {
+        const [hotRes, scoutRes] = await Promise.all([
+          listHotspots(400),
+          listScoutingRecords(400),
+        ]);
+        const filters = {
+          farmId: filterCtx.farmId,
+          greenhouseId: filterCtx.greenhouseId,
+          variety: filterCtx.variety,
+          dateYmds: filterCtx.dateYmds,
+          dateFilterAll: filterCtx.dateFilterAll,
+        };
+        const hotspots = (hotRes.data ?? []).filter((h) => {
+          const row = h as {
+            farm_id: string;
+            greenhouse_id: string | null;
+            pest_type: string;
+            severity: number;
+            status: string;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            created_at: string;
+          };
+          return (
+            row.status === "active" &&
+            matchesManagerDashboardFilters(filterCtx.sites, filters, {
+              farmId: row.farm_id,
+              greenhouseId: row.greenhouse_id,
+              greenhouseName: row.greenhouses?.name,
+              cropType: row.greenhouses?.crop_type ?? null,
+              createdAt: row.created_at,
+            })
+          );
+        });
+        const scouting = (scoutRes.data ?? []).filter((r) => {
+          const row = r as {
+            farm_id: string;
+            greenhouse_id: string;
+            issue_type: string;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            crop_varieties?: { name?: string } | null;
+            recorded_at: string;
+          };
+          return matchesManagerDashboardFilters(filterCtx.sites, filters, {
+            farmId: row.farm_id,
+            greenhouseId: row.greenhouse_id,
+            greenhouseName: row.greenhouses?.name,
+            cropType: row.crop_varieties?.name ?? row.greenhouses?.crop_type ?? null,
+            createdAt: row.recorded_at,
+          });
+        });
+        const severityMix = [1, 2, 3, 4, 5].map((level) => ({
+          name: `${level}/5`,
+          value: hotspots.filter((h) => (h as { severity: number }).severity === level).length,
+        }));
+        const houseTally = tallyNames(
+          scouting.map(
+            (r) =>
+              ((r as { greenhouses?: { name?: string } | null }).greenhouses?.name ??
+                "Unknown") as string,
+          ),
+        );
+        setData({
+          pestMix: topWithOther(
+            tallyNames(hotspots.map((h) => (h as { pest_type: string }).pest_type)),
+            6,
+          ),
+          severityMix,
+          issueTypeMix: tallyNames(
+            scouting.map((r) =>
+              (r as { issue_type: string }).issue_type === "disease" ? "Disease" : "Pest",
+            ),
+          ),
+          scoutingByHouse: houseTally.slice(0, 10).map((row) => ({
+            greenhouse: row.name,
+            stops: row.value,
+          })),
+        });
+      } else {
+        setData(await getAdminDailyAnalytics());
+      }
     } catch (e) {
       toast({
         title: "Analytics unavailable",
@@ -115,7 +219,16 @@ export function AdminDailyAnalytics({
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [
+    toast,
+    managerDashboardFilters,
+    filterCtx.farmId,
+    filterCtx.greenhouseId,
+    filterCtx.variety,
+    filterCtx.dateYmds,
+    filterCtx.dateFilterAll,
+    filterCtx.sites,
+  ]);
 
   useEffect(() => {
     void load();

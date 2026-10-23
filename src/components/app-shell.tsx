@@ -238,7 +238,14 @@ export function AppShell({
         </div>
 
         <main className="min-w-0 flex-1 space-y-4">
-          <div className="glass-card rounded-3xl p-4">
+          <div
+            className={cn(
+              "rounded-2xl border border-primary/10 p-3 shadow-sm",
+              roleMode === "manager" || roleMode === "admin"
+                ? "bg-gradient-to-br from-primary/[0.12] via-emerald-50/70 to-background/95 dark:from-primary/18 dark:via-emerald-950/35 dark:to-background/90"
+                : "glass-card rounded-3xl p-4",
+            )}
+          >
             <div className="flex items-start gap-3">
               <Button
                 type="button"
@@ -251,8 +258,8 @@ export function AppShell({
                 {sidebarOpen ? <X className="size-4" /> : <Menu className="size-4" />}
               </Button>
               <div className="min-w-0 flex-1">
-                {roleMode === "manager" ? (
-                  <ManagerWorkspaceHeader />
+                {roleMode === "manager" || roleMode === "admin" ? (
+                  <ManagerWorkspaceHeader mode={roleMode === "admin" ? "admin" : "manager"} />
                 ) : (
                   <>
                     <p className="text-sm font-medium">{workspace.title}</p>

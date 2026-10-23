@@ -4,12 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { formatHeaderDate } from "@/lib/manager-dashboard-filters";
-import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
+import { formatHeaderDatesSummary } from "@/lib/manager-dashboard-filters";
+import {
+  getMyAssignedSitesAction,
+  listFarmsGreenhousesCatalogAction,
+} from "@/features/admin/supervisor-access-actions";
+import { DashboardDateFilter } from "@/features/manager/dashboard-date-filter";
 import { ManagerDashboardFiltersBar } from "@/features/manager/manager-dashboard-filters-bar";
 import { useManagerDashboardFilterStore } from "@/store/manager-dashboard-filter-store";
 
-function farmTitleLabel(sites: { farmId: string; farmName: string }[], farmId: string) {
+function farmTitleLabel(
+  sites: { farmId: string; farmName: string }[],
+  farmId: string,
+) {
   if (farmId !== "all") {
     const farm = sites.find((f) => f.farmId === farmId);
     if (farm) return farm.farmName;
@@ -19,16 +26,23 @@ function farmTitleLabel(sites: { farmId: string; farmName: string }[], farmId: s
   return null;
 }
 
-export function ManagerWorkspaceHeader() {
+type Props = {
+  mode: "manager" | "admin";
+};
+
+export function ManagerWorkspaceHeader({ mode }: Props) {
   const pathname = usePathname();
-  const onDashboard = pathname.startsWith("/manager/dashboard");
+  const onDashboard =
+    mode === "manager"
+      ? pathname.startsWith("/manager/dashboard")
+      : pathname.startsWith("/admin/dashboard");
   const sites = useManagerDashboardFilterStore((s) => s.sites);
   const sitesLoaded = useManagerDashboardFilterStore((s) => s.sitesLoaded);
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
-  const dateYmd = useManagerDashboardFilterStore((s) => s.dateYmd);
+  const dateYmds = useManagerDashboardFilterStore((s) => s.dateYmds);
+  const dateFilterAll = useManagerDashboardFilterStore((s) => s.dateFilterAll);
   const setSites = useManagerDashboardFilterStore((s) => s.setSites);
   const resetSitesLoad = useManagerDashboardFilterStore((s) => s.resetSitesLoad);
-  const setDateYmd = useManagerDashboardFilterStore((s) => s.setDateYmd);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingSites, setLoadingSites] = useState(!sitesLoaded);
 
@@ -37,7 +51,10 @@ export function ManagerWorkspaceHeader() {
     setLoadingSites(true);
     setLoadError(null);
     try {
-      const result = await getMyAssignedSitesAction();
+      const result =
+        mode === "admin"
+          ? await listFarmsGreenhousesCatalogAction()
+          : await getMyAssignedSitesAction();
       if (result.error) {
         setLoadError(result.error.message);
         return;
@@ -48,32 +65,33 @@ export function ManagerWorkspaceHeader() {
     } finally {
       setLoadingSites(false);
     }
-  }, [setSites, resetSitesLoad]);
+  }, [setSites, resetSitesLoad, mode]);
 
   useEffect(() => {
-    if (sitesLoaded) {
-      setLoadingSites(false);
-      return;
-    }
+    resetSitesLoad();
     void loadSites();
-  }, [sitesLoaded, loadSites]);
+  }, [mode, loadSites, resetSitesLoad]);
 
   const farmLabel = farmTitleLabel(sites, farmId);
+  const roleLabel = mode === "admin" ? "Admin" : "Farm manager";
 
   return (
-    <div className="min-w-0 flex-1 space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="min-w-0 flex-1 space-y-2">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-medium">
-            Farm manager
+          <p className="text-sm font-semibold leading-tight">
+            {roleLabel}
             {farmLabel ? (
-              <span className="text-muted-foreground"> · {farmLabel}</span>
+              <span className="font-normal text-muted-foreground"> · {farmLabel}</span>
             ) : loadingSites ? (
-              <span className="text-muted-foreground"> · …</span>
+              <span className="font-normal text-muted-foreground"> · …</span>
             ) : null}
           </p>
+          <p className="text-xs text-muted-foreground">
+            {formatHeaderDatesSummary(dateYmds, dateFilterAll)}
+          </p>
           {loadError ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               <p className="text-xs text-destructive">{loadError}</p>
               <Button type="button" size="sm" variant="outline" onClick={() => void loadSites()}>
                 Retry
@@ -81,24 +99,15 @@ export function ManagerWorkspaceHeader() {
             </div>
           ) : null}
         </div>
-        <div className="shrink-0 sm:min-w-[11rem]">
-          <label className="mb-1 block text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
-            Date
-          </label>
-          <input
-            id="manager-header-date"
-            type="date"
-            value={dateYmd}
-            onChange={(e) => setDateYmd(e.target.value)}
-            className="w-full rounded-lg border border-primary/25 bg-primary/[0.04] px-2.5 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatHeaderDate(dateYmd)}
-          </p>
-        </div>
+        {onDashboard ? <DashboardDateFilter /> : null}
       </div>
       {onDashboard ? (
-        <ManagerDashboardFiltersBar loading={loadingSites} loadError={loadError} onRetry={loadSites} />
+        <ManagerDashboardFiltersBar
+          loading={loadingSites}
+          loadError={loadError}
+          onRetry={loadSites}
+          showAllFarmsOption={mode === "admin" || sites.length > 1}
+        />
       ) : null}
     </div>
   );

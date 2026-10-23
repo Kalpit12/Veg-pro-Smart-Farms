@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -22,7 +23,16 @@ import { VegProChartTooltip } from "@/features/dashboard/components/vegpro-chart
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { hasConfiguredBackend } from "@/lib/data-backend";
+import { useManagerDashboardFilterApply } from "@/hooks/use-manager-dashboard-filter-apply";
+import {
+  calendarDayWindow,
+  isOnCalendarDay,
+  matchesManagerDashboardFilters,
+} from "@/lib/manager-dashboard-filters";
 import { getWeeklyInfestationTrends } from "@/services/supabase/dashboard-service";
+import { listHotspots } from "@/services/supabase/infestation-service";
+import { listScoutingRecords } from "@/services/supabase/scouting-service";
+import { listSprays } from "@/services/supabase/spray-service";
 
 const demoData = [
   { day: "Mon", reports: 4, sprays: 6, scouting: 12 },
@@ -34,8 +44,13 @@ const demoData = [
   { day: "Sun", reports: 1, sprays: 3, scouting: 4 },
 ];
 
-export function ActivityChart() {
+export function ActivityChart({
+  managerDashboardFilters = false,
+}: {
+  managerDashboardFilters?: boolean;
+}) {
   const { toast } = useToast();
+  const filterCtx = useManagerDashboardFilterApply(managerDashboardFilters);
   const [loading, setLoading] = useState(true);
   const [series, setSeries] = useState(demoData);
 
@@ -47,6 +62,93 @@ export function ActivityChart() {
     }
 
     try {
+      if (managerDashboardFilters) {
+        const [hotRes, sprayRes, scoutRes] = await Promise.all([
+          listHotspots(400),
+          listSprays(400),
+          listScoutingRecords(400),
+        ]);
+        const scope = {
+          farmId: filterCtx.farmId,
+          greenhouseId: filterCtx.greenhouseId,
+          variety: filterCtx.variety,
+          dateYmds: filterCtx.dateYmds,
+          dateFilterAll: true,
+        };
+        const inScope = (item: Parameters<typeof filterCtx.matches>[0]) =>
+          matchesManagerDashboardFilters(filterCtx.sites, scope, item);
+
+        const reports = (hotRes.data ?? []).filter((h) => {
+          const row = h as {
+            farm_id: string;
+            greenhouse_id: string | null;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            created_at: string;
+          };
+          return inScope({
+            farmId: row.farm_id,
+            greenhouseId: row.greenhouse_id,
+            greenhouseName: row.greenhouses?.name,
+            cropType: row.greenhouses?.crop_type ?? null,
+            createdAt: row.created_at,
+          });
+        });
+        const sprays = (sprayRes.data ?? []).filter((s) => {
+          const row = s as {
+            farm_id: string;
+            greenhouse_id: string | null;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            created_at: string;
+          };
+          return inScope({
+            farmId: row.farm_id,
+            greenhouseId: row.greenhouse_id,
+            greenhouseName: row.greenhouses?.name,
+            cropType: row.greenhouses?.crop_type ?? null,
+            createdAt: row.created_at,
+          });
+        });
+        const scouting = (scoutRes.data ?? []).filter((r) => {
+          const row = r as {
+            farm_id: string;
+            greenhouse_id: string;
+            greenhouses?: { name?: string; crop_type?: string } | null;
+            crop_varieties?: { name?: string } | null;
+            recorded_at: string;
+          };
+          return inScope({
+            farmId: row.farm_id,
+            greenhouseId: row.greenhouse_id,
+            greenhouseName: row.greenhouses?.name,
+            cropType: row.crop_varieties?.name ?? row.greenhouses?.crop_type ?? null,
+            createdAt: row.recorded_at,
+          });
+        });
+
+        const dateKeys = filterCtx.dateFilterAll
+          ? Array.from({ length: 7 }, (_, i) => {
+              const d = new Date();
+              d.setDate(d.getDate() - (6 - i));
+              return format(d, "yyyy-MM-dd");
+            })
+          : [...filterCtx.dateYmds].sort();
+
+        setSeries(
+          dateKeys.map((ymd) => {
+            const { from } = calendarDayWindow(ymd);
+            const count = (rows: { created_at?: string; recorded_at?: string }[]) =>
+              rows.filter((row) =>
+                isOnCalendarDay(row.created_at ?? row.recorded_at ?? "", ymd),
+              ).length;
+            return {
+              day: format(from, "EEE d MMM"),
+              reports: count(reports as { created_at: string }[]),
+              sprays: count(sprays as { created_at: string }[]),
+              scouting: count(scouting as { recorded_at: string }[]),
+            };
+          }),
+        );
+      } else {
       const trends = await getWeeklyInfestationTrends();
       setSeries(
         trends.reports.map((point, index) => ({
@@ -56,6 +158,7 @@ export function ActivityChart() {
           scouting: trends.scouting[index]?.value ?? 0,
         })),
       );
+      }
     } catch (e) {
       toast({
         title: "Trend data unavailable",
@@ -66,7 +169,16 @@ export function ActivityChart() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [
+    toast,
+    managerDashboardFilters,
+    filterCtx.farmId,
+    filterCtx.greenhouseId,
+    filterCtx.variety,
+    filterCtx.dateYmds,
+    filterCtx.dateFilterAll,
+    filterCtx.sites,
+  ]);
 
   useEffect(() => {
     void load();
@@ -80,7 +192,11 @@ export function ActivityChart() {
   return (
     <section className="glass-card rounded-2xl p-4">
       <header className="mb-4">
-        <h3 className="text-base font-semibold">Last 7 days</h3>
+        <h3 className="text-base font-semibold">
+          {managerDashboardFilters && !filterCtx.dateFilterAll
+            ? "Selected dates"
+            : "Last 7 days"}
+        </h3>
         <p className="text-xs text-muted-foreground">Reports, sprays, and scouting stops</p>
       </header>
       <div className="chart-surface">

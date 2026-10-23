@@ -15,13 +15,16 @@ type State = {
   farmId: string;
   greenhouseId: string;
   variety: string;
-  dateYmd: string;
+  dateYmds: string[];
+  dateFilterAll: boolean;
   setSites: (sites: FarmGreenhouseCatalogItem[]) => void;
   resetSitesLoad: () => void;
   setFarmId: (farmId: string) => void;
   setGreenhouseId: (greenhouseId: string) => void;
   setVariety: (variety: string) => void;
-  setDateYmd: (dateYmd: string) => void;
+  addDateYmd: (ymd: string) => void;
+  removeDateYmd: (ymd: string) => void;
+  setDateFilterAll: (all: boolean) => void;
 };
 
 export const useManagerDashboardFilterStore = create<State>((set, get) => ({
@@ -30,7 +33,8 @@ export const useManagerDashboardFilterStore = create<State>((set, get) => ({
   farmId: ALL,
   greenhouseId: ALL,
   variety: ALL,
-  dateYmd: todayDateYmd(),
+  dateYmds: [todayDateYmd()],
+  dateFilterAll: false,
 
   setSites: (sites) => {
     const next: Partial<State> = { sites, sitesLoaded: true };
@@ -78,18 +82,33 @@ export const useManagerDashboardFilterStore = create<State>((set, get) => ({
     set({ variety });
   },
 
-  setDateYmd: (dateYmd) => set({ dateYmd }),
+  addDateYmd: (ymd) => {
+    const trimmed = ymd.trim();
+    if (!trimmed) return;
+    set((s) => {
+      if (s.dateYmds.includes(trimmed)) return { dateFilterAll: false };
+      return { dateYmds: [...s.dateYmds, trimmed].sort(), dateFilterAll: false };
+    });
+  },
 
-  resetSitesLoad: () => set({ sites: [], sitesLoaded: false }),
+  removeDateYmd: (ymd) => {
+    set((s) => {
+      const next = s.dateYmds.filter((d) => d !== ymd);
+      return { dateYmds: next.length ? next : [todayDateYmd()] };
+    });
+  },
+
+  setDateFilterAll: (dateFilterAll) => set({ dateFilterAll }),
 }));
 
 export function useManagerFilterSelection() {
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
   const greenhouseId = useManagerDashboardFilterStore((s) => s.greenhouseId);
   const variety = useManagerDashboardFilterStore((s) => s.variety);
-  const dateYmd = useManagerDashboardFilterStore((s) => s.dateYmd);
+  const dateYmds = useManagerDashboardFilterStore((s) => s.dateYmds);
+  const dateFilterAll = useManagerDashboardFilterStore((s) => s.dateFilterAll);
   const sites = useManagerDashboardFilterStore((s) => s.sites);
-  return { farmId, greenhouseId, variety, dateYmd, sites };
+  return { farmId, greenhouseId, variety, dateYmds, dateFilterAll, sites };
 }
 
 export { varietiesForFarm, greenhousesForFarm, ALL };
