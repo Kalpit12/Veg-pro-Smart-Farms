@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -37,17 +37,15 @@ export function ManagerWorkspaceHeader({ mode }: Props) {
       ? pathname.startsWith("/manager/dashboard")
       : pathname.startsWith("/admin/dashboard");
   const sites = useManagerDashboardFilterStore((s) => s.sites);
-  const sitesLoaded = useManagerDashboardFilterStore((s) => s.sitesLoaded);
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
   const dateYmds = useManagerDashboardFilterStore((s) => s.dateYmds);
   const dateFilterAll = useManagerDashboardFilterStore((s) => s.dateFilterAll);
   const setSites = useManagerDashboardFilterStore((s) => s.setSites);
-  const resetSitesLoad = useManagerDashboardFilterStore((s) => s.resetSitesLoad);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadingSites, setLoadingSites] = useState(!sitesLoaded);
+  const [loadingSites, setLoadingSites] = useState(true);
+  const loadedModeRef = useRef<Props["mode"] | null>(null);
 
   const loadSites = useCallback(async () => {
-    resetSitesLoad();
     setLoadingSites(true);
     setLoadError(null);
     try {
@@ -65,13 +63,18 @@ export function ManagerWorkspaceHeader({ mode }: Props) {
     } finally {
       setLoadingSites(false);
     }
-  }, [setSites, resetSitesLoad, mode]);
+  }, [setSites, mode]);
 
   useEffect(() => {
-    resetSitesLoad();
+    if (loadedModeRef.current === mode && sites.length > 0) {
+      setLoadingSites(false);
+      return;
+    }
+    loadedModeRef.current = mode;
     void loadSites();
-  }, [mode, loadSites, resetSitesLoad]);
+  }, [mode, loadSites, sites.length]);
 
+  const safeDateYmds = Array.isArray(dateYmds) ? dateYmds : [];
   const farmLabel = farmTitleLabel(sites, farmId);
   const roleLabel = mode === "admin" ? "Admin" : "Farm manager";
 
@@ -88,7 +91,7 @@ export function ManagerWorkspaceHeader({ mode }: Props) {
             ) : null}
           </p>
           <p className="text-xs text-muted-foreground">
-            {formatHeaderDatesSummary(dateYmds, dateFilterAll)}
+            {formatHeaderDatesSummary(safeDateYmds, dateFilterAll)}
           </p>
           {loadError ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">

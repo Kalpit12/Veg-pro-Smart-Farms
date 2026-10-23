@@ -33,11 +33,13 @@ export function formatHeaderDate(ymd: string) {
 
 export function formatHeaderDatesSummary(dateYmds: string[], dateFilterAll: boolean) {
   if (dateFilterAll) return "All dates";
-  if (dateYmds.length === 1) return formatHeaderDate(dateYmds[0]!);
-  if (dateYmds.length === 2) {
-    return `${formatHeaderDate(dateYmds[0]!)} and ${formatHeaderDate(dateYmds[1]!)}`;
+  const days = Array.isArray(dateYmds) ? dateYmds : [];
+  if (!days.length) return formatHeaderDate(todayDateYmd());
+  if (days.length === 1) return formatHeaderDate(days[0]!);
+  if (days.length === 2) {
+    return `${formatHeaderDate(days[0]!)} and ${formatHeaderDate(days[1]!)}`;
   }
-  return `${dateYmds.length} days selected`;
+  return `${days.length} days selected`;
 }
 
 export function greenhousesForFarm(
@@ -114,7 +116,8 @@ export function matchesManagerDashboardFilters(
     createdAt: string;
   },
 ) {
-  if (!filters.dateFilterAll && !isOnAnySelectedDay(item.createdAt, filters.dateYmds)) {
+  const dateYmds = Array.isArray(filters.dateYmds) ? filters.dateYmds : [];
+  if (!filters.dateFilterAll && !isOnAnySelectedDay(item.createdAt, dateYmds)) {
     return false;
   }
 

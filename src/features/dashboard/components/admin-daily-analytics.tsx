@@ -120,7 +120,7 @@ export function AdminDailyAnalytics({
   const { toast } = useToast();
   const filterCtx = useManagerDashboardFilterApply(managerDashboardFilters);
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<AdminDailyAnalytics>(demoAnalytics);
+  const [data, setData] = useState<AdminDailyAnalytics>(() => demoAnalytics());
 
   const load = useCallback(async () => {
     if (!hasConfiguredBackend()) {

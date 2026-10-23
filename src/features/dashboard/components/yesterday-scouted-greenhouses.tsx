@@ -99,7 +99,15 @@ export function YesterdayScoutedGreenhouses({
         });
       });
     },
-    [managerDashboardFilters, managerFilters],
+    [
+      managerDashboardFilters,
+      managerFilters.farmId,
+      managerFilters.greenhouseId,
+      managerFilters.variety,
+      managerFilters.dateYmds,
+      managerFilters.dateFilterAll,
+      managerFilters.sites,
+    ],
   );
 
   const rounds = useMemo(

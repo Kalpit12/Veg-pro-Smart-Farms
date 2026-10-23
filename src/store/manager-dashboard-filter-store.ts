@@ -101,13 +101,23 @@ export const useManagerDashboardFilterStore = create<State>((set, get) => ({
   setDateFilterAll: (dateFilterAll) => set({ dateFilterAll }),
 }));
 
+function normalizeDateYmds(value: unknown): string[] {
+  if (Array.isArray(value) && value.every((d) => typeof d === "string")) {
+    return value.length ? value : [todayDateYmd()];
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [todayDateYmd()];
+}
+
 export function useManagerFilterSelection() {
   const farmId = useManagerDashboardFilterStore((s) => s.farmId);
   const greenhouseId = useManagerDashboardFilterStore((s) => s.greenhouseId);
   const variety = useManagerDashboardFilterStore((s) => s.variety);
-  const dateYmds = useManagerDashboardFilterStore((s) => s.dateYmds);
+  const dateYmdsRaw = useManagerDashboardFilterStore((s) => s.dateYmds);
   const dateFilterAll = useManagerDashboardFilterStore((s) => s.dateFilterAll);
   const sites = useManagerDashboardFilterStore((s) => s.sites);
+  const dateYmds = normalizeDateYmds(dateYmdsRaw);
+
   return { farmId, greenhouseId, variety, dateYmds, dateFilterAll, sites };
 }
 

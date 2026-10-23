@@ -6,7 +6,14 @@ import { matchesManagerDashboardFilters } from "@/lib/manager-dashboard-filters"
 import { useManagerFilterSelection } from "@/store/manager-dashboard-filter-store";
 
 export function useManagerDashboardFilterApply(enabled: boolean) {
-  const selection = useManagerFilterSelection();
+  const {
+    farmId,
+    greenhouseId,
+    variety,
+    dateYmds,
+    dateFilterAll,
+    sites,
+  } = useManagerFilterSelection();
 
   const matches = useCallback(
     (item: {
@@ -17,16 +24,14 @@ export function useManagerDashboardFilterApply(enabled: boolean) {
       createdAt: string;
     }) => {
       if (!enabled) return true;
-      return matchesManagerDashboardFilters(selection.sites, {
-        farmId: selection.farmId,
-        greenhouseId: selection.greenhouseId,
-        variety: selection.variety,
-        dateYmds: selection.dateYmds,
-        dateFilterAll: selection.dateFilterAll,
-      }, item);
+      return matchesManagerDashboardFilters(
+        sites,
+        { farmId, greenhouseId, variety, dateYmds, dateFilterAll },
+        item,
+      );
     },
-    [enabled, selection],
+    [enabled, farmId, greenhouseId, variety, dateYmds, dateFilterAll, sites],
   );
 
-  return { ...selection, matches };
+  return { farmId, greenhouseId, variety, dateYmds, dateFilterAll, sites, matches };
 }
