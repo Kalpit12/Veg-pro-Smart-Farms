@@ -23,6 +23,7 @@ import {
   filterTrendsRows,
   normalizeTrendIssueType,
   resolveTrendGreenhouseName,
+  resolveTrendIssueType,
   sortGreenhousesBySeverity,
   trendIssueOptionsForType,
   trendVarietyOptions,
@@ -175,11 +176,20 @@ export function TrendsGrid({
   useEffect(() => {
     if (scope !== "assigned") return;
     void getMyAssignedSitesAction().then((result) => {
+      const nameMap = new Map<string, string>();
+      const cropMap = new Map<string, string>();
       const list = (result.data ?? []).flatMap((farm) =>
-        farm.greenhouses.map((g) => ({ id: g.id, name: g.name })),
+        farm.greenhouses.map((g) => {
+          if (g.name) nameMap.set(g.id, g.name);
+          const crop = g.cropType?.trim();
+          if (crop) cropMap.set(g.id, crop);
+          return { id: g.id, name: g.name };
+        }),
       );
       list.sort((a, b) => compareStarGreenhouseName(a.name, b.name));
       setAssignedGreenhouses(list);
+      setCatalogNames(nameMap);
+      setCropByGreenhouseId(cropMap);
     });
   }, [scope]);
 
@@ -231,7 +241,7 @@ export function TrendsGrid({
           ),
           recordedAt: r.recordedAt,
           rating: r.rating,
-          issueType: normalizeTrendIssueType(r.issueType),
+          issueType: resolveTrendIssueType(r.issueType, r.issue),
           issue: r.issue,
           variety,
         };
@@ -289,6 +299,9 @@ export function TrendsGrid({
     }
   }, [filterOptions.varieties, variety]);
 
+  const scoutingFiltersActive =
+    issueType !== "all" || issue !== "all" || variety !== "all";
+
   const filteredRows = useMemo(
     () => filterTrendsRows(sourceRows, { issueType, issue, variety }),
     [sourceRows, issueType, issue, variety],
@@ -312,12 +325,27 @@ export function TrendsGrid({
       sprayForGrid = sprayForGrid.filter((s) => assignedIdSet.has(s.greenhouseId));
     }
 
-    const greenhouses =
-      scope === "assigned"
-        ? (assignedGreenhouses ?? [])
-        : useDemo
-          ? bemackTrendGreenhouses()
-          : collectTrendGreenhouses(rowsForGrid, sprayForGrid, catalogNames);
+    const matchedGhIds = new Set(rowsForGrid.map((r) => r.greenhouseId));
+
+    let greenhouses: { id: string; name: string }[];
+    if (useDemo) {
+      greenhouses = scoutingFiltersActive
+        ? collectTrendGreenhouses(rowsForGrid, [], catalogNames)
+        : bemackTrendGreenhouses();
+    } else if (scoutingFiltersActive) {
+      greenhouses = collectTrendGreenhouses(rowsForGrid, [], catalogNames);
+      if (scope === "assigned" && assignedGreenhouses) {
+        greenhouses = assignedGreenhouses.filter((g) => matchedGhIds.has(g.id));
+      }
+    } else if (scope === "assigned") {
+      greenhouses = assignedGreenhouses ?? [];
+    } else {
+      greenhouses = collectTrendGreenhouses(rowsForGrid, sprayForGrid, catalogNames);
+    }
+
+    if (scoutingFiltersActive && matchedGhIds.size > 0) {
+      sprayForGrid = sprayForGrid.filter((s) => matchedGhIds.has(s.greenhouseId));
+    }
 
     return buildTrendsGrid(rowsForGrid, {
       dates,
@@ -338,6 +366,7 @@ export function TrendsGrid({
     assignedGreenhouses,
     assignedIdSet,
     catalogNames,
+    scoutingFiltersActive,
   ]);
 
   const sortedGreenhouses = useMemo(() => {
@@ -490,6 +519,13 @@ export function TrendsGrid({
         </span>
         <span>1–4 arrows = 25% steps</span>
         {mode === "week" ? <span>90-day view uses weekly columns</span> : null}
+        {scoutingFiltersActive ? (
+          <span className="font-medium text-foreground">
+            Filters active · {filteredRows.length} matching observation
+            {filteredRows.length === 1 ? "" : "s"} · {sortedGreenhouses.length}{" "}
+            greenhouse{sortedGreenhouses.length === 1 ? "" : "s"}
+          </span>
+        ) : null}
       </div>
 
       <div className="glass-card overflow-hidden rounded-2xl">

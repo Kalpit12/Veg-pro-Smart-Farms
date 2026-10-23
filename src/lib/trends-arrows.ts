@@ -92,6 +92,26 @@ export function normalizeTrendIssueType(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
+/** Map DB issue_type + issue name to pest | disease for trend filters. */
+export function resolveTrendIssueType(
+  issueType: string | null | undefined,
+  issueName: string | null | undefined,
+) {
+  const normalized = normalizeTrendIssueType(issueType);
+  if (normalized === "pest" || normalized === "disease") return normalized;
+
+  const name = (issueName ?? "").trim().toLowerCase();
+  if (!name) return normalized;
+
+  for (const pest of BEMACK_PESTS) {
+    if (pest.toLowerCase() === name) return "pest";
+  }
+  for (const disease of BEMACK_DISEASES) {
+    if (disease.toLowerCase() === name) return "disease";
+  }
+  return normalized;
+}
+
 export function filterTrendsRows(
   rows: TrendsScoutingRow[],
   filters: {
@@ -112,7 +132,9 @@ export function filterTrendsRows(
       if (got !== want) return false;
     }
     if (filters.variety && filters.variety !== "all") {
-      if ((row.variety ?? "").trim() !== filters.variety) return false;
+      const want = filters.variety.trim().toLowerCase();
+      const got = (row.variety ?? "").trim().toLowerCase();
+      if (got !== want) return false;
     }
     return true;
   });
