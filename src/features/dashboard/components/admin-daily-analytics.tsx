@@ -131,8 +131,8 @@ export function AdminDailyAnalytics({
     try {
       if (managerDashboardFilters) {
         const [hotRes, scoutRes] = await Promise.all([
-          listHotspots(400),
-          listScoutingRecords(400),
+          listHotspots(200),
+          listScoutingRecords(200),
         ]);
         const filters = {
           farmId: filterCtx.farmId,

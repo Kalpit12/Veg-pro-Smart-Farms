@@ -36,6 +36,8 @@ export const useManagerDashboardFilterStore = create<State>((set, get) => ({
   dateYmds: [todayDateYmd()],
   dateFilterAll: false,
 
+  resetSitesLoad: () => set({ sites: [], sitesLoaded: false }),
+
   setSites: (sites) => {
     const next: Partial<State> = { sites, sitesLoaded: true };
     if (sites.length === 1) {

@@ -12,6 +12,7 @@ import { useRealtimePositions } from "@/hooks/use-realtime-positions";
 import { useToast } from "@/hooks/use-toast";
 import { getDemoKpis } from "@/lib/demo-field-data";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
+import { friendlyDataErrorMessage } from "@/lib/service-error-message";
 import { getDashboardKpis } from "@/services/supabase/dashboard-service";
 import { listActiveHotspots } from "@/services/supabase/infestation-service";
 import { listSprays } from "@/services/supabase/spray-service";
@@ -30,7 +31,7 @@ export function MetricsGrid({
   const scoutingDays = managerDashboardFilters ? 14 : 1;
   const { records: scoutingRecords } = useScoutingData(scoutingDays, {
     ...pollOpts,
-    recordLimit: managerDashboardFilters ? 400 : 200,
+    recordLimit: managerDashboardFilters ? 250 : 200,
   });
   const [kpis, setKpis] = useState({
     activeHotspots: 0,
@@ -68,10 +69,7 @@ export function MetricsGrid({
       } catch (kpiError) {
         toast({
           title: "Dashboard metrics slow",
-          description:
-            kpiError instanceof Error
-              ? kpiError.message
-              : "SQL timed out loading KPIs. Showing filtered counts only.",
+          description: friendlyDataErrorMessage(kpiError),
           tone: "error",
         });
       }
@@ -139,12 +137,9 @@ export function MetricsGrid({
     } catch (e) {
       toast({
         title: "Dashboard not ready",
-        description:
-          e instanceof Error
-            ? e.message
-            : hasConfiguredBackend()
-              ? "Database query failed. Check server logs and SQL migrations."
-              : "Connect Supabase and run migrations.",
+        description: hasConfiguredBackend()
+          ? friendlyDataErrorMessage(e)
+          : "Connect Supabase and run migrations.",
         tone: "error",
       });
     } finally {

@@ -195,8 +195,13 @@ export function useScoutingData(
     }
     const since = new Date();
     since.setDate(since.getDate() - days);
-    const { data } = await listScoutingRecordsSince(since, recordLimit);
-    setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
+    const { data, error } = await listScoutingRecordsSince(since, recordLimit);
+    if (error) {
+      console.error("[scouting-data]", error.message);
+      setRemote([]);
+    } else {
+      setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
+    }
     setLoading(false);
     initialLoad.current = false;
   }, [days, recordLimit]);

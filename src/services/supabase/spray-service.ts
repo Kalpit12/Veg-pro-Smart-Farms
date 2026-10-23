@@ -56,7 +56,10 @@ export async function listSpraysForHistory(options?: {
   limit?: number;
 }) {
   if (routeDataThroughMssql()) {
-    const { data, error } = await mssql.mssqlListSpraysAction(options?.limit ?? 500);
+    const { data, error } = await mssql.mssqlListSpraysAction(
+      options?.limit ?? 500,
+      options?.since?.toISOString(),
+    );
     let rows = data ?? [];
     if (options?.since) {
       const t = options.since.getTime();

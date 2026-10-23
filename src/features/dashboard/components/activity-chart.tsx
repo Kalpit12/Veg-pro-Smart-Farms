@@ -64,9 +64,9 @@ export function ActivityChart({
     try {
       if (managerDashboardFilters) {
         const [hotRes, sprayRes, scoutRes] = await Promise.all([
-          listHotspots(400),
-          listSprays(400),
-          listScoutingRecords(400),
+          listHotspots(200),
+          listSprays(200),
+          listScoutingRecords(200),
         ]);
         const scope = {
           farmId: filterCtx.farmId,

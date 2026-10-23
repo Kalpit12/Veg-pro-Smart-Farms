@@ -63,8 +63,8 @@ export async function mssqlLogSprayAction(input: LogSprayInput) {
   return q.mssqlLogSpray(input);
 }
 
-export async function mssqlListSpraysAction(limit?: number) {
-  return q.mssqlListSprays(limit);
+export async function mssqlListSpraysAction(limit?: number, sinceIso?: string) {
+  return q.mssqlListSprays(limit, sinceIso ? new Date(sinceIso) : undefined);
 }
 
 export async function mssqlGetSpraysTodayCountAction() {

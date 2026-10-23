@@ -36,6 +36,7 @@ import {
   type GreenhouseConditionCompare,
 } from "@/lib/greenhouse-condition";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
+import { friendlyDataErrorMessage, readServiceError } from "@/lib/service-error-message";
 import { ALL } from "@/lib/manager-dashboard-filters";
 import {
   STAR_GREENHOUSE_ROWS,
@@ -289,12 +290,13 @@ export function HistoryList({ scope = "admin", fullReportRef }: Props) {
 
     try {
       if (!initialLoadDone.current) setLoading(true);
+      const historyLimit = 400;
       const [hotspotsRes, spraysRes] = await Promise.all([
-        listHotspotsForHistory({ since, limit: 2000 }),
-        listSpraysForHistory({ since, limit: 2000 }),
+        listHotspotsForHistory({ since, limit: historyLimit }),
+        listSpraysForHistory({ since, limit: historyLimit }),
       ]);
-      if (hotspotsRes.error) throw hotspotsRes.error;
-      if (spraysRes.error) throw spraysRes.error;
+      if (hotspotsRes.error) throw new Error(readServiceError(hotspotsRes.error));
+      if (spraysRes.error) throw new Error(readServiceError(spraysRes.error));
 
       const reports = (hotspotsRes.data ?? []).map((h) =>
         mapHotspotToHistory(h as Parameters<typeof mapHotspotToHistory>[0]),
@@ -310,7 +312,7 @@ export function HistoryList({ scope = "admin", fullReportRef }: Props) {
     } catch (e) {
       toast({
         title: "History unavailable",
-        description: e instanceof Error ? e.message : "Unknown error",
+        description: friendlyDataErrorMessage(e),
         tone: "error",
       });
     } finally {

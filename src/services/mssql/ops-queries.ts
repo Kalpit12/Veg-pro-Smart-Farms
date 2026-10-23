@@ -190,7 +190,6 @@ export async function mssqlListHotspotsForHistory(options?: {
   since?: Date;
   limit?: number;
 }) {
-  await requireServerSession();
   const clauses = ["WHERE 1=1"];
   const params: Record<string, unknown> = {};
   if (options?.since) {
@@ -392,7 +391,7 @@ export async function mssqlLogSpray(input: LogSprayInput) {
   });
 }
 
-export async function mssqlListSprays(limit = 200) {
+export async function mssqlListSprays(limit = 200, since?: Date) {
   const session = await requireServerSession();
   const scope = await sqlSupervisorSiteFilter(
     session.role,
@@ -401,13 +400,18 @@ export async function mssqlListSprays(limit = 200) {
     "s.farm_id",
   );
   const pool = await getMssqlPool();
-  const result = await pool.request().input("limit", sql.Int, limit).query(`
+  const req = pool.request().input("limit", sql.Int, limit);
+  const sinceClause = since ? " AND s.created_at >= @since" : "";
+  if (since) {
+    req.input("since", sql.DateTime2, bindSqlDateTime2(since));
+  }
+  const result = await req.query(`
     SELECT TOP (@limit) s.*, f.name AS farm_name, g.name AS greenhouse_name, u.full_name AS worker_name
     FROM dbo.spray_treatments s
     LEFT JOIN dbo.farms f ON f.id = s.farm_id
     LEFT JOIN dbo.greenhouses g ON g.id = s.greenhouse_id
     LEFT JOIN dbo.users u ON u.id = s.worker_id
-    WHERE 1=1${scope}
+    WHERE 1=1${sinceClause}${scope}
     ORDER BY s.created_at DESC
   `);
   return ok(
