@@ -50,6 +50,10 @@ export function WorkerLocationPanel() {
 
   const ready = Boolean(scan.farmId && scan.greenhouseId);
 
+  const offlineDemo = isOfflineDemo();
+  // Live site: only greenhouses that came from the database (never the built-in Star sheet).
+  const liveAnchors = offlineDemo ? anchors : anchors.filter((a) => a.fromDb);
+
   const greenhouseOptions =
     fieldSites.length > 0
       ? fieldSites.map((l) => ({
@@ -58,22 +62,26 @@ export function WorkerLocationPanel() {
           variety: l.cropType ?? null,
           farmName: l.farmName,
         }))
-      : anchors.length > 0
-        ? anchors.map((l) => ({ id: l.greenhouseId, name: l.greenhouseName }))
-        : BEMACK_DEMO_LOCATIONS.map((l) => ({
-            id: l.greenhouseId,
-            name: l.greenhouseName,
-          }));
+      : liveAnchors.length > 0
+        ? liveAnchors.map((l) => ({ id: l.greenhouseId, name: l.greenhouseName }))
+        : offlineDemo
+          ? BEMACK_DEMO_LOCATIONS.map((l) => ({
+              id: l.greenhouseId,
+              name: l.greenhouseName,
+            }))
+          : [];
 
-  // Admin re-assigned this worker (e.g. Star -> Galaxy): drop the old saved house.
+  // Saved house no longer allowed (re-assigned, e.g. Star -> Galaxy, or removed from DB).
+  const optionIdsKey = greenhouseOptions.map((o) => o.id).join(",");
   useEffect(() => {
-    if (walkLocked || !fieldSites.length || !scan.greenhouseId) return;
-    const stillAllowed = fieldSites.some((s) => s.greenhouseId === scan.greenhouseId);
-    if (!stillAllowed) {
+    if (walkLocked || offlineDemo || !scan.greenhouseId) return;
+    const ids = optionIdsKey ? optionIdsKey.split(",") : [];
+    if (!ids.length && !fieldSites.length) return; // still loading
+    if (!ids.includes(scan.greenhouseId)) {
       useScanStore.getState().clear();
       setManualGh("");
     }
-  }, [fieldSites, scan.greenhouseId, walkLocked]);
+  }, [optionIdsKey, fieldSites.length, scan.greenhouseId, walkLocked, offlineDemo]);
 
   const applyGreenhouse = (greenhouseName: string, { silent = false } = {}) => {
     if (walkLocked) {
@@ -93,10 +101,11 @@ export function WorkerLocationPanel() {
     }
 
     const fromSite = fieldSites.find((l) => l.greenhouseName === greenhouseName);
-    const fromAnchor = anchors.find((l) => l.greenhouseName === greenhouseName);
-    const fromDemo = fieldSites.length
-      ? undefined
-      : BEMACK_DEMO_LOCATIONS.find((l) => l.greenhouseName === greenhouseName);
+    const fromAnchor = liveAnchors.find((l) => l.greenhouseName === greenhouseName);
+    const fromDemo =
+      fieldSites.length || !offlineDemo
+        ? undefined
+        : BEMACK_DEMO_LOCATIONS.find((l) => l.greenhouseName === greenhouseName);
     const loc = fromSite ?? fromAnchor ?? fromDemo;
     if (!loc) {
       toast({
@@ -176,6 +185,12 @@ export function WorkerLocationPanel() {
 
       <div className="relative z-30 space-y-1.5 text-sm">
         <span className="font-medium">Pick greenhouse</span>
+        {!offlineDemo && greenhouseOptions.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            No greenhouses loaded for your account yet. Check your connection, or ask the admin
+            to set your Monitored sites.
+          </p>
+        ) : null}
         <GreenhousePicker
           data-testid="check-in-greenhouse"
           value={manualGh}

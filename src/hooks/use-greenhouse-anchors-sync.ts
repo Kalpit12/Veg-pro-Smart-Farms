@@ -19,10 +19,6 @@ export function useGreenhouseAnchorsSync() {
   const resetToSynthetic = useGreenhouseAnchorStore((s) => s.resetToSynthetic);
 
   useEffect(() => {
-    if (isOfflineDemo()) {
-      resetToSynthetic();
-      return;
-    }
     let cancelled = false;
     void (async () => {
       const [anchorsResult, assignedResult] = await Promise.all([
@@ -31,8 +27,11 @@ export function useGreenhouseAnchorsSync() {
       ]);
       if (cancelled) return;
 
-      // Network / server failure: keep whatever was cached last time.
-      if (!assignedResult && anchorsResult.error) return;
+      // Server unreachable: offline demo uses the built-in Star sheet; live site keeps cache.
+      if (!assignedResult && anchorsResult.error) {
+        if (isOfflineDemo()) resetToSynthetic();
+        return;
+      }
 
       const seenNames = new Set<string>();
       const sites: FieldSite[] = [];
@@ -65,11 +64,12 @@ export function useGreenhouseAnchorsSync() {
       }
 
       setFieldSites([]);
-      if (anchorsResult.error || !data.length) {
+      if (isOfflineDemo() && (anchorsResult.error || !data.length)) {
         resetToSynthetic();
         return;
       }
-      setFromDb(data);
+      // Live DB: only real greenhouses, never the built-in Star demo list.
+      setFromDb(data, { includeSynthetic: false });
     })();
     return () => {
       cancelled = true;

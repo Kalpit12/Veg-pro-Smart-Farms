@@ -319,7 +319,19 @@ export async function listAssignedSitesForCurrentSupervisor(): Promise<{
           )
           ORDER BY f.name, g.name
         `);
-      const rows = result.recordset.map((r) => ({
+      let recordset = result.recordset;
+      if (!recordset.length && session.role === "worker") {
+        // Worker with no Monitored sites: allow every greenhouse in the database.
+        const all = await pool.request().query(`
+          SELECT f.id AS farm_id, f.name AS farm_name, g.id AS greenhouse_id, g.name AS greenhouse_name,
+                 g.crop_type AS greenhouse_crop_type
+          FROM dbo.greenhouses g
+          INNER JOIN dbo.farms f ON f.id = g.farm_id
+          ORDER BY f.name, g.name
+        `);
+        recordset = all.recordset;
+      }
+      const rows = recordset.map((r) => ({
         farm_id: String(r.farm_id),
         farm_name: r.farm_name as string,
         greenhouse_id: String(r.greenhouse_id),
