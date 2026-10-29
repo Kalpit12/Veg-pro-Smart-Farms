@@ -33,6 +33,7 @@ export function WorkerLocationPanel() {
   const walkEngaged = useScoutingSessionStore((s) => s.walkEngaged);
   const demoRoundId = useScoutingStore((s) => s.activeRoundId);
   const anchors = useGreenhouseAnchorStore((s) => s.anchors);
+  const fieldSites = useGreenhouseAnchorStore((s) => s.fieldSites);
   const { toast } = useToast();
   const [manualGh, setManualGh] = useState(scan.greenhouseName ?? "");
 
@@ -50,12 +51,29 @@ export function WorkerLocationPanel() {
   const ready = Boolean(scan.farmId && scan.greenhouseId);
 
   const greenhouseOptions =
-    anchors.length > 0
-      ? anchors.map((l) => ({ id: l.greenhouseId, name: l.greenhouseName }))
-      : BEMACK_DEMO_LOCATIONS.map((l) => ({
+    fieldSites.length > 0
+      ? fieldSites.map((l) => ({
           id: l.greenhouseId,
           name: l.greenhouseName,
-        }));
+          variety: l.cropType ?? null,
+          farmName: l.farmName,
+        }))
+      : anchors.length > 0
+        ? anchors.map((l) => ({ id: l.greenhouseId, name: l.greenhouseName }))
+        : BEMACK_DEMO_LOCATIONS.map((l) => ({
+            id: l.greenhouseId,
+            name: l.greenhouseName,
+          }));
+
+  // Admin re-assigned this worker (e.g. Star -> Galaxy): drop the old saved house.
+  useEffect(() => {
+    if (walkLocked || !fieldSites.length || !scan.greenhouseId) return;
+    const stillAllowed = fieldSites.some((s) => s.greenhouseId === scan.greenhouseId);
+    if (!stillAllowed) {
+      useScanStore.getState().clear();
+      setManualGh("");
+    }
+  }, [fieldSites, scan.greenhouseId, walkLocked]);
 
   const applyGreenhouse = (greenhouseName: string, { silent = false } = {}) => {
     if (walkLocked) {
@@ -74,9 +92,12 @@ export function WorkerLocationPanel() {
       return true;
     }
 
-    const fromDemo = BEMACK_DEMO_LOCATIONS.find((l) => l.greenhouseName === greenhouseName);
+    const fromSite = fieldSites.find((l) => l.greenhouseName === greenhouseName);
     const fromAnchor = anchors.find((l) => l.greenhouseName === greenhouseName);
-    const loc = fromDemo ?? fromAnchor;
+    const fromDemo = fieldSites.length
+      ? undefined
+      : BEMACK_DEMO_LOCATIONS.find((l) => l.greenhouseName === greenhouseName);
+    const loc = fromSite ?? fromAnchor ?? fromDemo;
     if (!loc) {
       toast({
         title: "Greenhouse not found",

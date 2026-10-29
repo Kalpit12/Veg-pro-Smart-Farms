@@ -14,6 +14,9 @@ import { cn } from "@/lib/utils";
 export type GreenhousePickerOption = {
   id: string;
   name: string;
+  /** Crop / variety from DB (used for houses outside the built-in Star sheet). */
+  variety?: string | null;
+  farmName?: string;
 };
 
 type Props = {
@@ -34,8 +37,20 @@ type RowMeta = {
   cols: string;
 };
 
+let varietyByName = new Map<string, string | null | undefined>();
+
 function metaFor(name: string): RowMeta {
   const row = starGreenhouseRow(name);
+  if (row.name !== name) {
+    // Not a Star sheet house (e.g. Galaxy GAGH14A) — show its own name, not STGH01A.
+    return {
+      name,
+      variety: varietyByName.get(name) || "—",
+      area: "—",
+      bays: "—",
+      cols: "—",
+    };
+  }
   return {
     name: row.name,
     variety: row.varieties.join(" / ") || "—",
@@ -124,7 +139,16 @@ export function GreenhousePicker({
   const listboxId = useId();
 
   const sorted = useMemo(
-    () => [...options].sort((a, b) => compareStarGreenhouseName(a.name, b.name)),
+    () => {
+      const seen = new Set<string>();
+      const unique = options.filter((o) => {
+        if (seen.has(o.name)) return false;
+        seen.add(o.name);
+        return true;
+      });
+      varietyByName = new Map(unique.map((o) => [o.name, o.variety]));
+      return unique.sort((a, b) => compareStarGreenhouseName(a.name, b.name));
+    },
     [options],
   );
 
