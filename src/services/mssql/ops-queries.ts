@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 
+import { kenyaNowIso } from "@/lib/kenya-time";
 import { bindSqlDateTime2, SQL_KENYA_NOW } from "@/lib/mssql/datetime";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { sqlSupervisorSiteFilter } from "@/lib/mssql/supervisor-scope";
@@ -60,9 +61,13 @@ export async function mssqlReportInfestation(
     await requireServerSession();
     const pool = await getMssqlPool();
     const id = randomUUID();
+    // Kenya wall clock (same as scouting_records.recorded_at). Queued offline reports
+    // keep the time the worker saved them, not the time they synced.
+    const createdAt = bindSqlDateTime2(scoutingMirror?.recordedAt ?? kenyaNowIso());
     const insert = pool
       .request()
       .input("id", sql.UniqueIdentifier, id)
+      .input("created_at", sql.DateTime2, createdAt)
       .input("farm_id", sql.UniqueIdentifier, input.farm_id)
       .input("reported_by", sql.UniqueIdentifier, input.reported_by)
       .input("latitude", sql.Float, input.latitude)
@@ -82,10 +87,10 @@ export async function mssqlReportInfestation(
       await insert.query(`
         INSERT INTO dbo.infestation_hotspots (
           id, farm_id, greenhouse_id, reported_by, latitude, longitude,
-          pest_type, problem, main_issue, severity, column_no, bay_no, status
+          pest_type, problem, main_issue, severity, column_no, bay_no, status, created_at
         ) VALUES (
           @id, @farm_id, @greenhouse_id, @reported_by, @latitude, @longitude,
-          @pest_type, @problem, @main_issue, @severity, @column_no, @bay_no, 'active'
+          @pest_type, @problem, @main_issue, @severity, @column_no, @bay_no, 'active', @created_at
         )
       `);
     } catch (gridColErr) {
@@ -104,6 +109,7 @@ export async function mssqlReportInfestation(
         .input("problem", sql.NVarChar(500), input.problem)
         .input("main_issue", sql.NVarChar(200), input.main_issue)
         .input("severity", sql.SmallInt, input.severity)
+        .input("created_at", sql.DateTime2, createdAt)
         .input(
           "greenhouse_id",
           sql.UniqueIdentifier,
@@ -112,10 +118,10 @@ export async function mssqlReportInfestation(
         .query(`
           INSERT INTO dbo.infestation_hotspots (
             id, farm_id, greenhouse_id, reported_by, latitude, longitude,
-            pest_type, problem, main_issue, severity, status
+            pest_type, problem, main_issue, severity, status, created_at
           ) VALUES (
             @id, @farm_id, @greenhouse_id, @reported_by, @latitude, @longitude,
-            @pest_type, @problem, @main_issue, @severity, 'active'
+            @pest_type, @problem, @main_issue, @severity, 'active', @created_at
           )
         `);
     }
@@ -369,13 +375,14 @@ export async function mssqlLogSpray(input: LogSprayInput) {
     .input("image_url", sql.NVarChar(1000), input.image_url ?? null)
     .input("severity_before", sql.SmallInt, input.severity_before ?? null)
     .input("severity_after", sql.SmallInt, input.severity_after ?? null)
+    .input("created_at", sql.DateTime2, bindSqlDateTime2(kenyaNowIso()))
     .query(`
       INSERT INTO dbo.spray_treatments (
         id, worker_id, hotspot_id, farm_id, greenhouse_id, latitude, longitude,
-        product_name, notes, image_url, severity_before, severity_after
+        product_name, notes, image_url, severity_before, severity_after, created_at
       ) VALUES (
         @id, @worker_id, @hotspot_id, @farm_id, @greenhouse_id, @latitude, @longitude,
-        @product_name, @notes, @image_url, @severity_before, @severity_after
+        @product_name, @notes, @image_url, @severity_before, @severity_after, @created_at
       )
     `);
   const row = await pool
@@ -500,7 +507,10 @@ export async function mssqlCreateAlert(type: string, message: string) {
     .input("id", sql.UniqueIdentifier, id)
     .input("type", sql.NVarChar(100), type)
     .input("message", sql.NVarChar(sql.MAX), message)
-    .query(`INSERT INTO dbo.alerts (id, type, message, status) VALUES (@id, @type, @message, 'open')`);
+    .input("created_at", sql.DateTime2, bindSqlDateTime2(kenyaNowIso()))
+    .query(
+      `INSERT INTO dbo.alerts (id, type, message, status, created_at) VALUES (@id, @type, @message, 'open', @created_at)`,
+    );
   return ok({ id });
 }
 

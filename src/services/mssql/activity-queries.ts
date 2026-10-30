@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { kenyaNowIso } from "@/lib/kenya-time";
+import { bindSqlDateTime2 } from "@/lib/mssql/datetime";
 import { fail, ok, toIso } from "@/lib/mssql/result";
 import { requireServerSession } from "@/lib/mssql/session-server";
 import { getMssqlPool, sql } from "@/lib/mssql/pool";
@@ -104,11 +106,12 @@ export async function mssqlSubmitActivity(input: {
       .input("notes", sql.NVarChar(sql.MAX), input.notes?.trim() || null)
       .input("image_url", sql.NVarChar(1000), input.image_url ?? null)
       .input("gps_location", sql.NVarChar(200), input.gps_location ?? null)
+      .input("created_at", sql.DateTime2, bindSqlDateTime2(kenyaNowIso()))
       .query(`
         INSERT INTO dbo.activities (
-          id, worker_id, farm_id, greenhouse_id, activity_type, notes, image_url, gps_location, status
+          id, worker_id, farm_id, greenhouse_id, activity_type, notes, image_url, gps_location, status, created_at
         ) VALUES (
-          @id, @worker_id, @farm_id, @greenhouse_id, @activity_type, @notes, @image_url, @gps_location, N'pending'
+          @id, @worker_id, @farm_id, @greenhouse_id, @activity_type, @notes, @image_url, @gps_location, N'pending', @created_at
         )
       `);
 
