@@ -119,19 +119,24 @@ export const useFieldWriteQueueStore = create<FieldWriteQueueStore>()(
         }));
         return id;
       },
-      enqueueInfestation: (payload, scoutingMirror) =>
+      enqueueInfestation: (payload, scoutingMirror) => {
+        const createdAt = kenyaNowIso();
         set((s) => ({
           items: [
             ...s.items,
             {
               id: newId(),
               kind: "infestation",
-              createdAt: kenyaNowIso(),
+              createdAt,
               payload,
-              scoutingMirror,
+              // Keep the time the worker saved the report (not the time it syncs).
+              scoutingMirror: scoutingMirror
+                ? { ...scoutingMirror, recordedAt: scoutingMirror.recordedAt ?? createdAt }
+                : undefined,
             },
           ],
-        })),
+        }));
+      },
       enqueueSpray: (payload, options) => {
         const id = newId();
         set((s) => ({
