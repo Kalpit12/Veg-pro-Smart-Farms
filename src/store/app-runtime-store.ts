@@ -19,6 +19,12 @@ export const useAppRuntimeStore = create<AppRuntimeState>((set, get) => ({
       window.__VEGPRO_FORCE_PRODUCTION__ = true;
       set({ hydrated: true, forceProduction: true });
     }
+    // Offline: the build already knows the backend; skip the server check
+    // (otherwise the service worker logs a "no-response" error).
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (!get().hydrated) set({ hydrated: true, forceProduction: hasConfiguredBackend() });
+      return;
+    }
     try {
       const res = await fetch("/api/app/config", { cache: "no-store" });
       const json = (await res.json()) as {

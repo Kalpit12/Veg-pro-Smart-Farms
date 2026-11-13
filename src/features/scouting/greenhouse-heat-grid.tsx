@@ -33,6 +33,7 @@ import { useFieldHeatOverlayStore } from "@/store/field-heat-overlay-store";
 import { useGreenhouseAnchorStore } from "@/store/greenhouse-anchor-store";
 import { useScoutingDashboardFocusStore } from "@/store/scouting-dashboard-focus-store";
 import { cn } from "@/lib/utils";
+import { isBrowserOffline } from "@/lib/network-errors";
 import type { ScoutCellLocation } from "@/lib/scout-observation-flow";
 
 type GreenhouseHeatGridProps = {
@@ -137,6 +138,7 @@ export function GreenhouseHeatGrid({
       setRoundRecords([]);
       return;
     }
+    if (isBrowserOffline()) return; // keep round records already shown
     let cancelled = false;
     void listRecordsForRound(effectiveRoundId).then(({ data }) => {
       if (cancelled) return;
@@ -162,6 +164,7 @@ export function GreenhouseHeatGrid({
       setHotspotInputs([]);
       return;
     }
+    if (isBrowserOffline()) return; // keep hotspots already shown
     let cancelled = false;
     void listActiveHotspotsForGreenhouse(resolvedGreenhouseId).then(({ data }) => {
       if (cancelled || !data) return;

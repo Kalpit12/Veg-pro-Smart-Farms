@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { isOfflineDemo } from "@/lib/data-backend";
+import { isBrowserOffline } from "@/lib/network-errors";
 import { getMyAssignedSitesAction } from "@/features/admin/supervisor-access-actions";
 import { listGreenhouseAnchors } from "@/services/supabase/greenhouse-service";
 import { useGreenhouseAnchorStore, type FieldSite } from "@/store/greenhouse-anchor-store";
@@ -18,7 +19,18 @@ export function useGreenhouseAnchorsSync() {
   const setFieldSites = useGreenhouseAnchorStore((s) => s.setFieldSites);
   const resetToSynthetic = useGreenhouseAnchorStore((s) => s.resetToSynthetic);
 
+  const [onlineTick, setOnlineTick] = useState(0);
+
+  // Refresh the greenhouse list again when signal comes back.
   useEffect(() => {
+    const onOnline = () => setOnlineTick((n) => n + 1);
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
+
+  useEffect(() => {
+    // Offline: keep the greenhouse list saved last time (no server call).
+    if (isBrowserOffline()) return;
     let cancelled = false;
     void (async () => {
       const [anchorsResult, assignedResult] = await Promise.all([
@@ -74,5 +86,5 @@ export function useGreenhouseAnchorsSync() {
     return () => {
       cancelled = true;
     };
-  }, [setFromDb, setFieldSites, resetToSynthetic]);
+  }, [setFromDb, setFieldSites, resetToSynthetic, onlineTick]);
 }

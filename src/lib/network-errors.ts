@@ -10,3 +10,8 @@ export function isLikelyOfflineError(error: unknown): boolean {
     msg,
   );
 }
+
+/** True when the browser reports no network (skip server calls; use cached data). */
+export function isBrowserOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}

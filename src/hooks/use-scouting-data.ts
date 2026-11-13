@@ -6,7 +6,7 @@ import type { MssqlPollOptions } from "@/hooks/use-mssql-poll";
 
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { hasConfiguredBackend } from "@/lib/data-backend";
-import { isLikelyOfflineError } from "@/lib/network-errors";
+import { isBrowserOffline, isLikelyOfflineError } from "@/lib/network-errors";
 import { SCOUTING_DATA_CHANGED_EVENT } from "@/lib/scouting-data-events";
 import type { SprayProgramInput } from "@/lib/spray-work-program";
 import {
@@ -220,6 +220,13 @@ export function useScoutingData(
     const since = new Date();
     since.setDate(since.getDate() - days);
     const cacheKey = `${SCOUTING_CACHE_PREFIX}${days}`;
+    if (isBrowserOffline()) {
+      // No signal: show the last records loaded online, skip the server call.
+      setRemote((prev) => (prev.length ? prev : readScoutingCache(cacheKey)));
+      setLoading(false);
+      initialLoad.current = false;
+      return;
+    }
     try {
       const { data, error } = await listScoutingRecordsSince(since, recordLimit);
       if (error) {
@@ -270,7 +277,7 @@ export function useAllScoutingRecords() {
   const [remote, setRemote] = useState<UnifiedScoutingRecord[]>([]);
 
   const load = useCallback(async () => {
-    if (!hasConfiguredBackend()) return;
+    if (!hasConfiguredBackend() || isBrowserOffline()) return;
     try {
       const { data, error } = await listScoutingRecords(500);
       if (error && isLikelyOfflineError(error)) return; // offline: keep what we have

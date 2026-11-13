@@ -9,6 +9,7 @@ import {
 } from "@/lib/issue-resolution";
 import { hasConfiguredBackend, isOfflineDemo } from "@/lib/data-backend";
 import { listHotspots } from "@/services/supabase/infestation-service";
+import { isBrowserOffline } from "@/lib/network-errors";
 import { useFieldOpsStore } from "@/store/field-ops-store";
 
 function toResolutionRefs(
@@ -35,9 +36,14 @@ export function useHotspotResolutionRefs(options?: Pick<MssqlPollOptions, "enabl
       return;
     }
 
-    const { data, error } = await listHotspots(200);
-    if (error) return;
-    setHotspots(toResolutionRefs(data ?? []));
+    if (isBrowserOffline()) return; // keep what is shown
+    try {
+      const { data, error } = await listHotspots(200);
+      if (error) return;
+      setHotspots(toResolutionRefs(data ?? []));
+    } catch {
+      /* no signal — keep what is shown */
+    }
   }, [demoHotspots]);
 
   useEffect(() => {
