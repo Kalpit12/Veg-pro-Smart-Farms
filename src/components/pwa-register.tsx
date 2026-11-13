@@ -46,6 +46,21 @@ export function PwaRegister() {
             setTimeout(done, 5000);
           });
         }
+        // A hard reload (Ctrl+F5) leaves the page outside the service worker, so it
+        // would not work offline. While online, reload once normally to attach it.
+        if (!navigator.serviceWorker.controller && navigator.onLine) {
+          let reloaded = false;
+          try {
+            reloaded = sessionStorage.getItem("vegpro-sw-attach-reload") === "1";
+            if (!reloaded) sessionStorage.setItem("vegpro-sw-attach-reload", "1");
+          } catch {
+            reloaded = true; // no storage: never risk a reload loop
+          }
+          if (!reloaded) {
+            window.location.reload();
+            return;
+          }
+        }
         await warmCache();
       } catch {
         /* registration failed (e.g. not HTTPS) — app still works online */

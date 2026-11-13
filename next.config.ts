@@ -35,6 +35,17 @@ const startUrlCache = {
   },
 };
 
+/** Farm map tiles (CARTO): keep tiles seen online so the walking map works offline. */
+const mapTilesCache = {
+  urlPattern: /^https:\/\/[a-z0-9.-]*basemaps\.cartocdn\.com\/.*/i,
+  handler: "CacheFirst",
+  options: {
+    cacheName: "map-tiles",
+    cacheableResponse: { statuses: [0, 200] },
+    expiration: { maxEntries: 1500, maxAgeSeconds: 30 * 24 * 60 * 60 },
+  },
+};
+
 const workerPagesCache = {
   urlPattern: ({ request, url }: { request: Request; url: URL }) =>
     self.origin === url.origin &&
@@ -59,7 +70,7 @@ const withPWA = withPWAInit({
   // Replaced by startUrlCache above (default caches the "/" redirect as an empty page).
   cacheStartUrl: false,
   dynamicStartUrl: false,
-  runtimeCaching: [startUrlCache, workerPagesCache, ...defaultRuntimeCaching],
+  runtimeCaching: [startUrlCache, workerPagesCache, mapTilesCache, ...defaultRuntimeCaching],
   // Next 15 does not serve /_next/app-build-manifest.json (404). If it is precached the
   // service worker install fails and offline mode never activates.
   buildExcludes: [/app-build-manifest\.json$/],

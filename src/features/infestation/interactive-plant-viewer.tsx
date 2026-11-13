@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 
+import { INTERACTIVE_FLOWER_DATA_URL } from "@/features/infestation/interactive-flower-data";
+
 import {
   PLANT_ZONE_HOTSPOTS,
   PLANT_ZONES,
@@ -40,11 +42,11 @@ export function InteractivePlantViewer({
       {/* Cap height on phones; keep width in sync so zone hotspots stay aligned */}
       <div className="relative mx-auto aspect-[2/3] h-[min(52vh,380px)] w-auto max-w-full">
         <Image
-          src="/plants/interactive-flower.webp"
+          src={INTERACTIVE_FLOWER_DATA_URL}
           alt="Interactive rose — tap bloom, leaves, or roots"
           fill
           priority
-          // Serve the precached /plants file directly (not /_next/image) so it shows offline.
+          // Embedded image (no network request) so it always shows offline.
           unoptimized
           sizes="(max-width: 768px) 100vw, 420px"
           className="object-contain"
