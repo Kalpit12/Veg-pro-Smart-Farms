@@ -44,6 +44,8 @@ export function InteractivePlantViewer({
           alt="Interactive rose — tap bloom, leaves, or roots"
           fill
           priority
+          // Serve the precached /plants file directly (not /_next/image) so it shows offline.
+          unoptimized
           sizes="(max-width: 768px) 100vw, 420px"
           className="object-contain"
         />
