@@ -6,6 +6,7 @@ import type { MssqlPollOptions } from "@/hooks/use-mssql-poll";
 
 import { useRealtimeScouting } from "@/hooks/use-realtime-scouting";
 import { hasConfiguredBackend } from "@/lib/data-backend";
+import { isLikelyOfflineError } from "@/lib/network-errors";
 import { SCOUTING_DATA_CHANGED_EVENT } from "@/lib/scouting-data-events";
 import type { SprayProgramInput } from "@/lib/spray-work-program";
 import {
@@ -174,6 +175,29 @@ export function useScoutingRounds(limit = 80, options?: Pick<MssqlPollOptions, "
   };
 }
 
+const SCOUTING_CACHE_PREFIX = "vegpro-scouting-records-cache-";
+
+/** Last records loaded online, so the field heat grid still has data offline. */
+function readScoutingCache(key: string): UnifiedScoutingRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as UnifiedScoutingRecord[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeScoutingCache(key: string, rows: UnifiedScoutingRecord[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(rows.slice(0, 800)));
+  } catch {
+    /* quota / private mode — offline cache is best effort */
+  }
+}
+
 export function useScoutingData(
   days = 30,
   options?: Pick<MssqlPollOptions, "enabled"> & { recordLimit?: number },
@@ -195,15 +219,31 @@ export function useScoutingData(
     }
     const since = new Date();
     since.setDate(since.getDate() - days);
-    const { data, error } = await listScoutingRecordsSince(since, recordLimit);
-    if (error) {
-      console.error("[scouting-data]", error.message);
-      setRemote([]);
-    } else {
-      setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
+    const cacheKey = `${SCOUTING_CACHE_PREFIX}${days}`;
+    try {
+      const { data, error } = await listScoutingRecordsSince(since, recordLimit);
+      if (error) {
+        if (isLikelyOfflineError(error)) {
+          // Offline: keep showing the last records we loaded.
+          setRemote((prev) => (prev.length ? prev : readScoutingCache(cacheKey)));
+        } else {
+          console.error("[scouting-data]", error.message);
+          setRemote([]);
+        }
+      } else {
+        const rows =
+          (data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? [];
+        setRemote(rows);
+        writeScoutingCache(cacheKey, rows);
+      }
+    } catch (e) {
+      // Server action unreachable (no signal): never leave the grid stuck on "Loading…".
+      if (!isLikelyOfflineError(e)) console.error("[scouting-data]", e);
+      setRemote((prev) => (prev.length ? prev : readScoutingCache(cacheKey)));
+    } finally {
+      setLoading(false);
+      initialLoad.current = false;
     }
-    setLoading(false);
-    initialLoad.current = false;
   }, [days, recordLimit]);
 
   useEffect(() => {
@@ -231,8 +271,13 @@ export function useAllScoutingRecords() {
 
   const load = useCallback(async () => {
     if (!hasConfiguredBackend()) return;
-    const { data } = await listScoutingRecords(500);
-    setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
+    try {
+      const { data, error } = await listScoutingRecords(500);
+      if (error && isLikelyOfflineError(error)) return; // offline: keep what we have
+      setRemote((data as ScoutingRecordRow[] | null)?.map(unifiedFromScoutingRecordRow) ?? []);
+    } catch {
+      /* offline — keep previous records */
+    }
   }, []);
 
   useEffect(() => {

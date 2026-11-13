@@ -143,6 +143,8 @@ export function GreenhouseHeatGrid({
       setRoundRecords(
         ((data as ScoutingRecordRow[] | null) ?? []).map(unifiedFromScoutingRecordRow),
       );
+    }).catch(() => {
+      /* offline — keep round records already shown */
     });
     return () => {
       cancelled = true;
@@ -182,6 +184,8 @@ export function GreenhouseHeatGrid({
           )
           .filter(Boolean) as ScoutingGridInput[],
       );
+    }).catch(() => {
+      /* offline — keep hotspots already shown */
     });
     return () => {
       cancelled = true;
