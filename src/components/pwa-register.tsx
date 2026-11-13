@@ -36,7 +36,10 @@ export function PwaRegister() {
 
     const register = async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        // Check for a newer offline version after each deploy (the new worker
+        // skips waiting, so it takes over as soon as it has downloaded).
+        if (navigator.onLine) void reg.update().catch(() => {});
         await navigator.serviceWorker.ready;
         // Wait until the worker controls this page so the warm-up fetches are cached.
         if (!navigator.serviceWorker.controller) {

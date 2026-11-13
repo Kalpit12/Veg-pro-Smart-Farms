@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Square } from "lucide-react";
@@ -8,8 +7,8 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button } from "@/components/ui/button";
+import { InteractivePlantViewer } from "@/features/infestation/interactive-plant-viewer";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { SCOUTING_WALK_FINISHED_EVENT } from "@/lib/scouting-walk-events";
 import {
@@ -56,18 +55,9 @@ import {
   type ScoutObservationHandoff,
 } from "@/lib/scout-observation-flow";
 
-const PlantViewer = dynamic(
-  () =>
-    import("@/features/infestation/interactive-plant-viewer").then(
-      (m) => m.InteractivePlantViewer,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <Skeleton className="mx-auto aspect-[2/3] h-[min(52vh,380px)] w-auto max-w-full rounded-2xl" />
-    ),
-  },
-);
+// Static import (not next/dynamic): a lazily loaded chunk cannot be fetched
+// offline and crashed the field app with ChunkLoadError.
+const PlantViewer = InteractivePlantViewer;
 
 const schema = z.object({
   zone: z.enum(["top", "middle", "lower"]),

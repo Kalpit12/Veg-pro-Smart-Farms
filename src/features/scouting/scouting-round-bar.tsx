@@ -37,12 +37,25 @@ import { useScanStore } from "@/store/scan-store";
 import { useScoutingStore } from "@/store/scouting-store";
 import { useScoutingRouteBufferStore } from "@/store/scouting-route-buffer-store";
 import { useScoutingSessionStore } from "@/store/scouting-session-store";
+import { ChunkErrorBoundary } from "@/components/chunk-error-boundary";
 
-const LiveRouteMiniMap = dynamic(
-  () =>
-    import("@/features/scouting/live-route-mini-map").then((m) => m.LiveRouteMiniMap),
-  { ssr: false, loading: () => <Skeleton className="h-40 w-full rounded-xl" /> },
-);
+const loadLiveRouteMiniMap = () =>
+  import("@/features/scouting/live-route-mini-map").then((m) => m.LiveRouteMiniMap);
+
+const LiveRouteMiniMap = dynamic(loadLiveRouteMiniMap, {
+  ssr: false,
+  loading: () => <Skeleton className="h-40 w-full rounded-xl" />,
+});
+
+/** Download the map code while online so it is ready if signal drops mid-walk. */
+function usePrefetchLiveRouteMap() {
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    void loadLiveRouteMiniMap().catch(() => {
+      /* offline — the boundary shows a fallback if it is needed */
+    });
+  }, []);
+}
 
 function greenhouseMeta(greenhouseId: string, farmId: string) {
   const loc = useGreenhouseAnchorStore
@@ -58,6 +71,7 @@ function greenhouseMeta(greenhouseId: string, farmId: string) {
 
 export function ScoutingRoundBar() {
   useGreenhouseAnchorsSync();
+  usePrefetchLiveRouteMap();
   const { toast } = useToast();
   const scan = useScanStore();
   const setContext = useScanStore((s) => s.setContext);
@@ -768,7 +782,15 @@ export function ScoutingRoundBar() {
 
             {tracker.livePath.length > 0 ? (
               <div className="overflow-hidden rounded-xl border border-border">
-                <LiveRouteMiniMap path={tracker.livePath} />
+                <ChunkErrorBoundary
+                  fallback={
+                    <p className="p-3 text-xs text-muted-foreground">
+                      Map unavailable offline — your route is still being recorded.
+                    </p>
+                  }
+                >
+                  <LiveRouteMiniMap path={tracker.livePath} />
+                </ChunkErrorBoundary>
               </div>
             ) : null}
           </div>
