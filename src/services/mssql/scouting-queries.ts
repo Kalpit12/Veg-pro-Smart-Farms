@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import {
   BEMACK_CATEGORIES,
   SCOUTING_PARAMETERS,
+  isStarSheetGreenhouse,
   varietyForBay,
 } from "@/lib/bemack-master-data";
 import type { FieldScoutingMirrorInput } from "@/lib/field-report-scouting-sync";
@@ -92,7 +93,6 @@ async function resolveCatalogForGreenhouse(
   bayNo: number,
 ) {
   await ensureCropCatalogSeeded(pool);
-  const preferred = varietyForBay(greenhouseName, bayNo);
   const pick = async (name: string) => {
     const result = await pool
       .request()
@@ -110,17 +110,39 @@ async function resolveCatalogForGreenhouse(
     };
   };
 
-  let ids = await pick(preferred);
-  if (ids) return ids;
+  // Star houses: per-bay variety from the built-in Star sheet.
+  if (isStarSheetGreenhouse(greenhouseName)) {
+    const ids = await pick(varietyForBay(greenhouseName, bayNo));
+    if (ids) return ids;
+  }
 
+  // Any other farm (Galaxy, …): the greenhouse's own variety from the database.
+  // Previously the Star sheet answered first and returned "Red Calypso".
   const gh = await pool
     .request()
     .input("id", sql.UniqueIdentifier, greenhouseId)
     .query(`SELECT crop_type FROM dbo.greenhouses WHERE id = @id`);
-  const cropType = gh.recordset[0]?.crop_type as string | undefined;
-  if (cropType?.trim()) {
-    ids = await pick(cropType.trim());
+  const cropType = (gh.recordset[0]?.crop_type as string | undefined)?.trim();
+  if (cropType) {
+    const ids = await pick(cropType);
     if (ids) return ids;
+    // Variety not in the catalog yet: add it so the record keeps the real variety.
+    const created = await pool
+      .request()
+      .input("name", sql.NVarChar(200), cropType)
+      .query(`
+        DECLARE @cat UNIQUEIDENTIFIER =
+          (SELECT TOP 1 v.category_id FROM dbo.crop_varieties v
+           GROUP BY v.category_id ORDER BY COUNT(*) DESC);
+        IF @cat IS NULL SET @cat = (SELECT TOP 1 id FROM dbo.crop_categories ORDER BY name);
+        IF @cat IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.crop_varieties WHERE name = @name)
+          INSERT INTO dbo.crop_varieties (id, category_id, name) VALUES (NEWID(), @cat, @name);
+        SELECT TOP 1 v.id AS variety_id, v.category_id FROM dbo.crop_varieties v WHERE v.name = @name;
+      `);
+    const hit = created.recordset[0];
+    if (hit) {
+      return { varietyId: String(hit.variety_id), categoryId: String(hit.category_id) };
+    }
   }
 
   const any = await pool.request().query(`

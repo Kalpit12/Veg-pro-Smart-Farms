@@ -173,6 +173,11 @@ export function baysForGreenhouse(greenhouseName: string | null | undefined) {
   return Array.from({ length: max }, (_, i) => i + 1);
 }
 
+/** True only for houses on the built-in Star greenhouse sheet (e.g. STGH01A). */
+export function isStarSheetGreenhouse(greenhouseName: string | null | undefined) {
+  return Boolean(greenhouseName && STAR_GREENHOUSE_ROWS.some((r) => r.name === greenhouseName));
+}
+
 export function varietyForBay(greenhouseName: string | null | undefined, bayNo: number) {
   const row = greenhouseName
     ? STAR_GREENHOUSE_ROWS.find((r) => r.name === greenhouseName)
