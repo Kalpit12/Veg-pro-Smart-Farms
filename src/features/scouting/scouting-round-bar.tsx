@@ -57,6 +57,35 @@ function usePrefetchLiveRouteMap() {
   }, []);
 }
 
+/** Weak-signal guard: a server call during Finish that takes longer is treated as offline. */
+const FINISH_NETWORK_TIMEOUT_MS = 8000;
+
+class FinishTimeoutError extends Error {
+  constructor() {
+    super("network timeout");
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new FinishTimeoutError()), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+function getUnsyncedForRound(roundId: string) {
+  return useScoutingRouteBufferStore.getState().getUnsynced(roundId).length;
+}
+
 function greenhouseMeta(greenhouseId: string, farmId: string) {
   const loc = useGreenhouseAnchorStore
     .getState()
@@ -288,10 +317,8 @@ export function ScoutingRoundBar() {
         return;
       }
 
-      const offline =
-        typeof navigator !== "undefined" && navigator.onLine === false;
-
-      if (offline) {
+      // Start the walk on this phone only; the queue creates it on the server later.
+      const startOffline = (description: string) => {
         const localId = crypto.randomUUID();
         const startedAt = kenyaNowIso();
         enqueueRoundStart({
@@ -314,14 +341,30 @@ export function ScoutingRoundBar() {
         engageWalk();
         toast({
           title: "Walking started offline",
-          description:
-            "Saved on this phone. Logs will upload when you reconnect.",
+          description,
           tone: "default",
         });
+      };
+
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        startOffline("Saved on this phone. Logs will upload when you reconnect.");
         return;
       }
 
-      const existing = await getAnyActiveRoundForScout(user.id);
+      // Phone says "online" but signal may be too weak: a failing or hanging
+      // server call falls back to starting offline instead of an error.
+      let existing: Awaited<ReturnType<typeof getAnyActiveRoundForScout>>;
+      let started: Awaited<ReturnType<typeof startScoutingRound>> | null = null;
+      try {
+        existing = await withTimeout(
+          getAnyActiveRoundForScout(user.id),
+          FINISH_NETWORK_TIMEOUT_MS,
+        );
+      } catch (e) {
+        if (!isLikelyOfflineError(e) && !(e instanceof FinishTimeoutError)) throw e;
+        startOffline("No signal — saved on this phone. Keep logging; sync when online.");
+        return;
+      }
       if (existing.data) {
         const row = existing.data as ScoutingRoundRow;
         setPendingRemoteRound(row);
@@ -343,39 +386,24 @@ export function ScoutingRoundBar() {
         return;
       }
 
-      const { data, error } = await startScoutingRound({
-        scout_id: user.id,
-        farm_id: scan.farmId!,
-        greenhouse_id: scan.greenhouseId!,
-      });
-      if (error) {
-        if (isLikelyOfflineError(error)) {
-          const localId = crypto.randomUUID();
-          const startedAt = kenyaNowIso();
-          enqueueRoundStart({
-            id: localId,
+      try {
+        started = await withTimeout(
+          startScoutingRound({
             scout_id: user.id,
             farm_id: scan.farmId!,
             greenhouse_id: scan.greenhouseId!,
-            started_at: startedAt,
-          });
-          setSession({
-            roundId: localId,
-            farmId: scan.farmId!,
-            farmName: scan.farmName ?? "Farm",
-            greenhouseId: scan.greenhouseId!,
-            greenhouseName: scan.greenhouseName ?? "Greenhouse",
-            startedAt,
-            stopCount: 0,
-            pendingOffline: true,
-          });
-          engageWalk();
-          toast({
-            title: "Walking started offline",
-            description:
-              "No signal — saved on this phone. Keep logging; sync when online.",
-            tone: "default",
-          });
+          }),
+          FINISH_NETWORK_TIMEOUT_MS,
+        );
+      } catch (e) {
+        if (!isLikelyOfflineError(e) && !(e instanceof FinishTimeoutError)) throw e;
+        startOffline("No signal — saved on this phone. Keep logging; sync when online.");
+        return;
+      }
+      const { data, error } = started;
+      if (error) {
+        if (isLikelyOfflineError(error)) {
+          startOffline("No signal — saved on this phone. Keep logging; sync when online.");
           return;
         }
         throw error;
@@ -418,11 +446,31 @@ export function ScoutingRoundBar() {
 
     setFinishing(true);
     try {
-      const offline =
+      let offline =
         typeof navigator !== "undefined" && navigator.onLine === false;
 
-      const flushResult = await tracker.flush({ all: true });
-      const hasPendingGps = flushResult.remaining > 0;
+      // Upload buffered GPS points. On a phone with no (or very weak) signal this
+      // throws or hangs; that must never block finishing — the queued finish
+      // uploads the remaining points before completing the walk on the server.
+      let hasPendingGps = false;
+      let pendingGpsCount = 0;
+      if (offline) {
+        pendingGpsCount = getUnsyncedForRound(activeRound.id);
+        hasPendingGps = pendingGpsCount > 0;
+      } else {
+        try {
+          const flushResult = await withTimeout(
+            tracker.flush({ all: true }),
+            FINISH_NETWORK_TIMEOUT_MS,
+          );
+          pendingGpsCount = flushResult.remaining;
+          hasPendingGps = flushResult.remaining > 0;
+        } catch {
+          offline = true; // treat as no signal
+          pendingGpsCount = getUnsyncedForRound(activeRound.id);
+          hasPendingGps = pendingGpsCount > 0;
+        }
+      }
 
       const bufferPoints = getPointsForRound(activeRound.id);
       const demoPoints = demoRoutePoints.filter((p) => p.roundId === activeRound.id);
@@ -439,18 +487,27 @@ export function ScoutingRoundBar() {
           longitude: r.longitude,
         }));
 
+      let haveServerStops = false;
       if (hasConfiguredBackend() && !offline && !session?.pendingOffline) {
-        const { data: roundRecords, error: recordsError } = await listRecordsForRound(
-          activeRound.id,
-        );
-        if (recordsError) throw recordsError;
-        stops = (roundRecords ?? []).map((r) => ({
-          columnNo: r.column_no,
-          bayNo: r.bay_no,
-          latitude: r.latitude,
-          longitude: r.longitude,
-        }));
-      } else if (hasConfiguredBackend()) {
+        try {
+          const { data: roundRecords, error: recordsError } = await withTimeout(
+            listRecordsForRound(activeRound.id),
+            FINISH_NETWORK_TIMEOUT_MS,
+          );
+          if (recordsError) throw recordsError;
+          stops = (roundRecords ?? []).map((r) => ({
+            columnNo: r.column_no,
+            bayNo: r.bay_no,
+            latitude: r.latitude,
+            longitude: r.longitude,
+          }));
+          haveServerStops = true;
+        } catch (e) {
+          if (!isLikelyOfflineError(e) && !(e instanceof FinishTimeoutError)) throw e;
+          offline = true; // weak / no signal: finish offline
+        }
+      }
+      if (hasConfiguredBackend() && !haveServerStops) {
         // Offline / pending: use local session stop count as coverage proxy via demo-shaped stops
         stops = Array.from({ length: activeRound.stopCount }, (_, i) => ({
           columnNo: (i % 5) + 1,
@@ -508,7 +565,7 @@ export function ScoutingRoundBar() {
         toast({
           title: "Finish saved offline",
           description: hasPendingGps
-            ? `${flushResult.remaining} GPS points will sync when online.`
+            ? `${pendingGpsCount} GPS points will sync when online.`
             : "Will complete on the server when you reconnect.",
           tone: "default",
         });
@@ -516,9 +573,16 @@ export function ScoutingRoundBar() {
         return;
       }
 
-      const { error } = await finalizeRoundMetrics(activeRound.id, {
-        coveragePct: coverage.coveragePct,
-      });
+      let error: unknown = null;
+      try {
+        ({ error } = await withTimeout(
+          finalizeRoundMetrics(activeRound.id, { coveragePct: coverage.coveragePct }),
+          FINISH_NETWORK_TIMEOUT_MS,
+        ));
+      } catch (e) {
+        // Server action threw (no signal) or timed out (weak signal).
+        error = e instanceof FinishTimeoutError ? new Error("network timeout") : e;
+      }
       if (error) {
         if (isLikelyOfflineError(error)) {
           enqueueRoundFinish({

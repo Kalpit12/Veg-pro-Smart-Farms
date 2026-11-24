@@ -16,7 +16,13 @@ export async function getCurrentUser() {
       return getOfflineFieldUser();
     }
     try {
-      const session = await getSessionAction();
+      // Weak signal: don't wait forever for the server — use the remembered user.
+      const session = await Promise.race([
+        getSessionAction(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("network timeout")), 8000),
+        ),
+      ]);
       if (!session) return getOfflineFieldUser();
       rememberOfflineFieldUser({ id: session.id, email: session.email });
       return { id: session.id, email: session.email };
