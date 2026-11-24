@@ -28,6 +28,15 @@ import {
 } from "@/store/field-write-queue-store";
 import { useScoutingRouteBufferStore } from "@/store/scouting-route-buffer-store";
 
+/** Readable message for Error objects and plain { message } results (was "[object Object]"). */
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}
+
 async function flushQueuedItem(item: FieldQueuedWrite) {
   if (item.kind === "round_start") {
     return startScoutingRound({
@@ -62,9 +71,14 @@ async function flushQueuedItem(item: FieldQueuedWrite) {
         useScoutingRouteBufferStore.getState().markSynced(batch.map((p) => p.id));
       }
     }
-    return finalizeRoundMetrics(roundId, {
+    const finished = await finalizeRoundMetrics(roundId, {
       coveragePct: item.payload.coveragePct,
     });
+    // Walk not on the server (nothing to finish): don't block the rest of the queue.
+    if (finished.error && /round not found|invalid round id/i.test(errorText(finished.error))) {
+      return { data: null, error: null };
+    }
+    return finished;
   }
 
   if (item.kind === "scout") {
@@ -140,7 +154,7 @@ export function FieldWriteQueueSync() {
               break;
             }
             const err = result.error;
-            const message = err instanceof Error ? err.message : String(err);
+            const message = errorText(err);
             setFlushError(message);
             toast({
               title: "Queued field write could not sync",
@@ -157,7 +171,7 @@ export function FieldWriteQueueSync() {
             setFlushError(null);
             break;
           }
-          const message = e instanceof Error ? e.message : String(e);
+          const message = errorText(e);
           setFlushError(message);
           toast({
             title: "Queued field write could not sync",

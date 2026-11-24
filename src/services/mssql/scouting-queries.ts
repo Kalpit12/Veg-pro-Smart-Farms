@@ -568,10 +568,33 @@ export async function mssqlStartScoutingRound(input: {
   started_at?: string;
 }) {
   await requireServerSession();
-  const existing = await mssqlGetAnyActiveRoundForScout(input.scout_id);
-  if (existing.data) return ok(existing.data);
-
   const pool = await getMssqlPool();
+
+  if (input.id) {
+    // Walk started offline on the phone and synced now. Its reports and finish
+    // are queued under this id, so this exact walk must exist on the server.
+    if (!isUuid(input.id)) return fail("Invalid round id");
+    const same = await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, input.id)
+      .query(`SELECT * FROM dbo.scouting_rounds WHERE id = @id`);
+    if (same.recordset[0]) return ok(mapRoundRow(same.recordset[0])); // already synced (retry)
+    // A scout walks one greenhouse at a time: close any walk left open on the
+    // server (e.g. started online, never finished there) instead of reusing it.
+    await pool
+      .request()
+      .input("scout_id", sql.UniqueIdentifier, input.scout_id)
+      .input("ended", sql.DateTime2, bindSqlDateTime2(input.started_at ?? kenyaNowIso()))
+      .query(`
+        UPDATE dbo.scouting_rounds
+        SET status = 'completed', ended_at = COALESCE(ended_at, @ended)
+        WHERE scout_id = @scout_id AND status = 'active'
+      `);
+  } else {
+    const existing = await mssqlGetAnyActiveRoundForScout(input.scout_id);
+    if (existing.data) return ok(existing.data);
+  }
+
   const id = input.id ?? randomUUID();
   const startedAt = input.started_at ?? kenyaNowIso();
   await pool
@@ -681,6 +704,13 @@ export async function mssqlListRecordsForRound(roundId: string) {
 export async function mssqlAppendRoutePoints(roundId: string, points: RoutePointInput[]) {
   if (!isUuid(roundId) || !points.length) return ok([] as ScoutingRoutePoint[]);
   const pool = await getMssqlPool();
+  // Walk not on the server (e.g. an offline walk that was never created): skip the
+  // points instead of failing on the foreign key and blocking the phone's queue.
+  const round = await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, roundId)
+    .query(`SELECT 1 AS ok FROM dbo.scouting_rounds WHERE id = @id`);
+  if (!round.recordset.length) return ok([] as ScoutingRoutePoint[]);
   for (const p of points) {
     await pool
       .request()
